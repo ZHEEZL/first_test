@@ -724,7 +724,7 @@ namespace first
             g.FillRectangle(bgBadge, 12, cy, ctrlW, ctrlH);
             g.DrawRectangle(borderBadge, 12, cy, ctrlW, ctrlH);
 
-            g.DrawString("▶ Управление камерой (Unity Scene View):", boldFont, goldBrush, 20, cy + 5);
+            g.DrawString("▶ Управление камерой:", boldFont, goldBrush, 20, cy + 5);
             g.DrawString("• ЛКМ + Перетаскивание: Вращение камеры вокруг объекта (Orbit)", smallFont, whiteBrush, 20, cy + 22);
             g.DrawString("• ПКМ / СКМ + Перетаскивание: Сдвиг сцены (Pan)  |  Колёсико: Масштаб (Zoom)", smallFont, whiteBrush, 20, cy + 38);
             g.DrawString("• Клавиши WASD / QE: Полёт по сцене  |  Пробел: Сбросить камеру", smallFont, whiteBrush, 20, cy + 54);
