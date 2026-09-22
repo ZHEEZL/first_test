@@ -11,14 +11,20 @@ namespace first
     {
         public string ExperimentId { get; set; }
         public DateTime CreatedAt { get; set; }
+        public string Note { get; set; }
+        public bool IsBaseline { get; set; }
         public List<string> Algorithms { get; set; } = new List<string>();
         public int TotalMeasurements { get; set; }
 
         public override string ToString()
         {
-            string algos = string.Join(", ", Algorithms.Take(3));
-            if (Algorithms.Count > 3) algos += $" +{Algorithms.Count - 3}";
-            return $"{CreatedAt:yyyy-MM-dd HH:mm:ss} | {algos} ({TotalMeasurements} замеров)";
+            string prefix = IsBaseline ? "⭐ [Эталон] " : "";
+            if (!string.IsNullOrWhiteSpace(Note))
+                return $"{prefix}{Note} ({CreatedAt:dd.MM HH:mm})";
+
+            string algos = string.Join(", ", Algorithms.Take(2));
+            if (Algorithms.Count > 2) algos += $" +{Algorithms.Count - 2}";
+            return $"{prefix}{CreatedAt:yyyy-MM-dd HH:mm} | {algos}";
         }
     }
 
@@ -63,7 +69,13 @@ namespace first
                             created_at TEXT NOT NULL
                         );
                         CREATE INDEX IF NOT EXISTS idx_algo_n ON measurements(algorithm_name, n);
-                        CREATE INDEX IF NOT EXISTS idx_exp_id ON measurements(experiment_id);";
+                        CREATE INDEX IF NOT EXISTS idx_exp_id ON measurements(experiment_id);
+
+                        CREATE TABLE IF NOT EXISTS experiment_meta (
+                            experiment_id TEXT PRIMARY KEY,
+                            note TEXT,
+                            is_baseline INTEGER DEFAULT 0
+                        );";
                     cmd.ExecuteNonQuery();
                 }
 
@@ -157,35 +169,64 @@ namespace first
         {
             Initialize();
             var list = new List<HistoryExperimentInfo>();
+            var dict = new Dictionary<string, HistoryExperimentInfo>();
 
             lock (LockObj)
             {
                 using var conn = new SqliteConnection(ConnectionString);
                 conn.Open();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    SELECT experiment_id, MIN(created_at) as first_created, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT algorithm_name) as algos
-                    FROM measurements
-                    GROUP BY experiment_id
-                    ORDER BY first_created DESC
-                    LIMIT 100;";
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (var cmd = conn.CreateCommand())
                 {
-                    string expId = reader.GetString(0);
-                    DateTime dt = DateTime.TryParse(reader.GetString(1), null, DateTimeStyles.RoundtripKind, out var parsedDt) ? parsedDt : DateTime.Now;
-                    int cnt = reader.GetInt32(2);
-                    string rawAlgos = reader.IsDBNull(3) ? "" : reader.GetString(3);
-                    var algos = rawAlgos.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToList();
+                    cmd.CommandText = @"
+                        SELECT m.experiment_id, MIN(m.created_at) as first_created, COUNT(*) as cnt, 
+                               meta.note, COALESCE(meta.is_baseline, 0) as is_base
+                        FROM measurements m
+                        LEFT JOIN experiment_meta meta ON m.experiment_id = meta.experiment_id
+                        GROUP BY m.experiment_id
+                        ORDER BY first_created DESC
+                        LIMIT 100;";
 
-                    list.Add(new HistoryExperimentInfo
+                    using var reader = cmd.ExecuteReader();
+                    while (reader.Read())
                     {
-                        ExperimentId = expId,
-                        CreatedAt = dt,
-                        TotalMeasurements = cnt,
-                        Algorithms = algos
-                    });
+                        string expId = reader.GetString(0);
+                        DateTime dt = DateTime.TryParse(reader.GetString(1), null, DateTimeStyles.RoundtripKind, out var parsedDt) ? parsedDt : DateTime.Now;
+                        int cnt = reader.GetInt32(2);
+                        string note = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                        bool isBase = reader.GetInt32(4) == 1;
+
+                        var info = new HistoryExperimentInfo
+                        {
+                            ExperimentId = expId,
+                            CreatedAt = dt,
+                            TotalMeasurements = cnt,
+                            Algorithms = new List<string>(),
+                            Note = note,
+                            IsBaseline = isBase
+                        };
+                        list.Add(info);
+                        dict[expId] = info;
+                    }
+                }
+
+                if (list.Count > 0)
+                {
+                    using var cmdAlgos = conn.CreateCommand();
+                    cmdAlgos.CommandText = @"
+                        SELECT DISTINCT experiment_id, algorithm_name
+                        FROM measurements
+                        ORDER BY algorithm_name;";
+
+                    using var reader = cmdAlgos.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        string expId = reader.GetString(0);
+                        string algoName = reader.GetString(1);
+                        if (dict.TryGetValue(expId, out var item))
+                        {
+                            item.Algorithms.Add(algoName);
+                        }
+                    }
                 }
             }
 
@@ -226,6 +267,117 @@ namespace first
             }
 
             return list;
+        }
+
+        public static Dictionary<string, Series> GetBaselineSeries(string experimentId)
+        {
+            Initialize();
+            var dict = new Dictionary<string, Series>();
+            if (string.IsNullOrEmpty(experimentId)) return dict;
+
+            var rows = GetMeasurementsForExperiment(experimentId);
+            var groupedByAlgo = rows.GroupBy(r => r.AlgorithmName);
+
+            foreach (var gAlgo in groupedByAlgo)
+            {
+                var s = new Series();
+                bool hasSteps = gAlgo.Any(r => r.StepCount.HasValue && r.StepCount.Value > 0);
+                s.MeasuresSteps = hasSteps;
+
+                var groupedByN = gAlgo.GroupBy(r => r.N).OrderBy(g => g.Key);
+                foreach (var gN in groupedByN)
+                {
+                    s.N.Add(gN.Key);
+                    double avgTime = gN.Average(r => r.ElapsedSeconds);
+                    double avgSteps = gN.Average(r => (double)(r.StepCount ?? 0));
+                    if (hasSteps)
+                    {
+                        s.T.Add(avgSteps);
+                    }
+                    else
+                    {
+                        s.T.Add(avgTime);
+                    }
+                }
+
+                dict[gAlgo.Key] = s;
+            }
+
+            return dict;
+        }
+
+        public static void DeleteExperiment(string experimentId)
+        {
+            Initialize();
+            lock (LockObj)
+            {
+                using var conn = new SqliteConnection(ConnectionString);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    DELETE FROM measurements WHERE experiment_id = @id;
+                    DELETE FROM experiment_meta WHERE experiment_id = @id;";
+                cmd.Parameters.AddWithValue("@id", experimentId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static void ClearAllHistory()
+        {
+            Initialize();
+            lock (LockObj)
+            {
+                using var conn = new SqliteConnection(ConnectionString);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    DELETE FROM measurements;
+                    DELETE FROM experiment_meta;";
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static void UpdateExperimentNote(string experimentId, string note)
+        {
+            Initialize();
+            lock (LockObj)
+            {
+                using var conn = new SqliteConnection(ConnectionString);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO experiment_meta (experiment_id, note, is_baseline)
+                    VALUES (@id, @note, 0)
+                    ON CONFLICT(experiment_id) DO UPDATE SET note = @note;";
+                cmd.Parameters.AddWithValue("@id", experimentId);
+                cmd.Parameters.AddWithValue("@note", note ?? "");
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static void SetBaseline(string experimentId, bool isBaseline)
+        {
+            Initialize();
+            lock (LockObj)
+            {
+                using var conn = new SqliteConnection(ConnectionString);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                if (isBaseline)
+                {
+                    cmd.CommandText = @"
+                        UPDATE experiment_meta SET is_baseline = 0;
+                        INSERT INTO experiment_meta (experiment_id, note, is_baseline)
+                        VALUES (@id, '', 1)
+                        ON CONFLICT(experiment_id) DO UPDATE SET is_baseline = 1;";
+                }
+                else
+                {
+                    cmd.CommandText = "UPDATE experiment_meta SET is_baseline = 0 WHERE experiment_id = @id;";
+                }
+                cmd.Parameters.AddWithValue("@id", experimentId);
+                cmd.ExecuteNonQuery();
+            }
         }
     }
 }
