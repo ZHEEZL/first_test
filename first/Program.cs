@@ -16,22 +16,6 @@ namespace first
         private static void Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
-            try
-            {
-                Process.GetCurrentProcess().ProcessorAffinity = (IntPtr)1;
-                Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                Thread.CurrentThread.Priority = ThreadPriority.Highest;
-            }
-            catch
-            {
-            }
 
             if (args.Length > 0 && args[0] == "--check-init")
             {
@@ -70,6 +54,22 @@ namespace first
 
         private static void RunConsoleMode(bool forceRecalc = false)
         {
+            try
+            {
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+                {
+                    Process.GetCurrentProcess().ProcessorAffinity = (IntPtr)1;
+                }
+                if (OperatingSystem.IsWindows())
+                {
+                    Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+                }
+                Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            }
+            catch
+            {
+            }
+
             var configs = AlgoConfigItem.CreateDefaultConfigs();
             const int maxVectorN = 2000;
             var ctx = new ExperimentContext(maxVectorN, seed: 20240915);

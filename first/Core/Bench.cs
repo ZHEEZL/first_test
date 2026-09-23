@@ -271,8 +271,6 @@ namespace first
 
             try
             {
-                Process.GetCurrentProcess().ProcessorAffinity = (IntPtr)1;
-                Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
             }
             catch

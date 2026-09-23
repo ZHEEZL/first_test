@@ -97,14 +97,13 @@ namespace first
         {
             base.OnPointerMoved(e);
             var pos = e.GetPosition(this);
-            _hoverMouse = pos;
 
             if (_isMouseDown)
             {
                 double dx = pos.X - _lastMouse.X;
                 double dy = pos.Y - _lastMouse.Y;
 
-                bool shouldPan = _isRightOrMiddle || (e.KeyModifiers & KeyModifiers.Shift) != 0 || IsPanMode;
+                bool shouldPan = _isRightOrMiddle || (e.KeyModifiers & KeyModifiers.Shift) != 0 || IsPanMode || Mode == ViewportMode.Heatmap2D;
                 if (!shouldPan)
                 {
                     // Вращение камеры (Orbit)
@@ -132,10 +131,18 @@ namespace first
                 }
 
                 _lastMouse = pos;
+                InvalidateVisual();
+                e.Handled = true;
             }
-
-            InvalidateVisual();
-            e.Handled = true;
+            else
+            {
+                double d = Math.Abs(pos.X - _hoverMouse.X) + Math.Abs(pos.Y - _hoverMouse.Y);
+                if (d > 4.0)
+                {
+                    _hoverMouse = pos;
+                    InvalidateVisual();
+                }
+            }
         }
 
         protected override void OnPointerWheelChanged(PointerWheelEventArgs e)

@@ -122,7 +122,6 @@ namespace first
 
             PnlHistoryCompare.IsVisible = true;
             UpdateBaselineComboForAlgo(algoName);
-            EnsureTabPlotUpdated(tab, algoName);
         }
 
         private void EnsureTabPlotUpdated(TabItem tab, string algoName)
@@ -146,7 +145,7 @@ namespace first
                     avaPlot.Reset(single[0].Value);
                     string uName = GetSeriesUnitName(series);
                     double uScale = GetSeriesUnitScale(series);
-                    SetupPlotInteractivity(avaPlot, series, uName, uScale);
+                    UpdatePlotInteractivity(avaPlot, series, uName, uScale);
                     avaPlot.Refresh();
                 }
 
@@ -268,41 +267,15 @@ namespace first
             var tab = TabsMain.SelectedItem as TabItem;
             if (tab == null) return;
 
-            string header = tab.Header?.ToString() ?? "";
-            if (!header.StartsWith("📈 ")) return;
+            string algoName = tab.Tag as string;
+            if (string.IsNullOrEmpty(algoName) || algoName == "summary" || algoName == "log" || algoName.Contains("Матричное")) return;
 
-            string algoName = (tab.Tag as string) ?? header.Substring(header.IndexOf(' ') + 1).Trim();
             ApplyBaselineSelectionForAlgo(algoName);
 
             var series = _lastResults.FirstOrDefault(s => s.Algo.Name == algoName);
             if (series != null)
             {
-                var single = Plotter.Build(
-                    new List<Series> { series },
-                    _currentBaselineSeries,
-                    ChkShowHistory.IsChecked ?? true,
-                    ChkShowErrorBars.IsChecked ?? true
-                );
-
-                if (single.Count > 0)
-                {
-                    var avaPlot = tab.Content as AvaPlot;
-                    if (avaPlot != null)
-                    {
-                        avaPlot.Reset(single[0].Value);
-                        string uName = GetSeriesUnitName(series);
-                        double uScale = GetSeriesUnitScale(series);
-                        SetupPlotInteractivity(avaPlot, series, uName, uScale);
-                        avaPlot.Refresh();
-                    }
-
-                    int pIdx = _lastPlots.FindIndex(kv => kv.Key == algoName);
-                    if (pIdx >= 0)
-                        _lastPlots[pIdx] = single[0];
-                    else
-                        _lastPlots.Add(single[0]);
-                }
-
+                EnsureTabPlotUpdated(tab, algoName);
                 UpdateSummaryRowForAlgo(series);
             }
         }
@@ -335,7 +308,7 @@ namespace first
                         {
                             string uName = GetSeriesUnitName(s);
                             double uScale = GetSeriesUnitScale(s);
-                            SetupPlotInteractivity(avaPlot, s, uName, uScale);
+                            UpdatePlotInteractivity(avaPlot, s, uName, uScale);
                         }
                         avaPlot.Refresh();
                     }
@@ -672,7 +645,7 @@ namespace first
                 {
                     string uName = GetSeriesUnitName(series);
                     double uScale = GetSeriesUnitScale(series);
-                    SetupPlotInteractivity(avaPlot, series, uName, uScale);
+                    UpdatePlotInteractivity(avaPlot, series, uName, uScale);
                 }
                 avaPlot.Refresh();
 
@@ -920,10 +893,9 @@ namespace first
                 var tab = TabsMain.SelectedItem as TabItem;
                 if (tab != null)
                 {
-                    string header = tab.Header?.ToString() ?? "";
-                    if (header.StartsWith("📈 "))
+                    string algoName = tab.Tag as string;
+                    if (!string.IsNullOrEmpty(algoName) && algoName != "summary" && algoName != "log" && !algoName.Contains("Матричное"))
                     {
-                        string algoName = (tab.Tag as string) ?? header.Substring(header.IndexOf(' ') + 1).Trim();
                         UpdateBaselineComboForAlgo(algoName);
                         OnBaselineChanged();
                     }
@@ -950,7 +922,18 @@ namespace first
             return 1.0;
         }
 
-        private void SetupPlotInteractivity(AvaPlot avaPlot, Series s, string unitName, double unitScale)
+        private sealed class PlotInteractivityContext
+        {
+            public Series Series;
+            public string UnitName;
+            public double UnitScale;
+            public ScottPlot.Plottables.Marker HighlightMarker;
+            public ScottPlot.Plottables.Crosshair Crosshair;
+            public ScottPlot.Plottables.Annotation InspectorAnno;
+            public int LastHighlightedIndex = -1;
+        }
+
+        private void UpdatePlotInteractivity(AvaPlot avaPlot, Series s, string unitName, double unitScale)
         {
             if (avaPlot == null || s == null || s.N.Count == 0) return;
 
@@ -976,112 +959,155 @@ namespace first
             inspectorAnno.LabelFontSize = 12;
             inspectorAnno.LabelBold = true;
 
-            int lastHighlightedIndex = -1;
-
-            avaPlot.PointerMoved += (sender, e) =>
+            var ctx = avaPlot.Tag as PlotInteractivityContext;
+            if (ctx == null)
             {
-                var pt = e.GetPosition(avaPlot);
-                Pixel mousePixel = new Pixel((float)pt.X, (float)pt.Y);
-                Coordinates mouseCoord = plt.GetCoordinates(mousePixel);
+                ctx = new PlotInteractivityContext();
+                avaPlot.Tag = ctx;
 
-                int closestIndex = -1;
-                double closestDistPixel = double.MaxValue;
-
-                for (int i = 0; i < s.N.Count; i++)
+                avaPlot.PointerMoved += (sender, e) =>
                 {
-                    double xVal = s.N[i];
-                    double yVal = s.T[i] * unitScale;
+                    var curCtx = avaPlot.Tag as PlotInteractivityContext;
+                    if (curCtx == null || curCtx.Series == null || curCtx.Series.N.Count == 0) return;
 
-                    Coordinates ptCoord = new Coordinates(xVal, yVal);
-                    Pixel ptPixel = plt.GetPixel(ptCoord);
-
-                    double dx = ptPixel.X - mousePixel.X;
-                    double dy = ptPixel.Y - mousePixel.Y;
-                    double dist = Math.Sqrt(dx * dx + dy * dy);
-
-                    if (dist < closestDistPixel)
+                    var props = e.GetCurrentPoint(avaPlot).Properties;
+                    if (props.IsLeftButtonPressed || props.IsRightButtonPressed || props.IsMiddleButtonPressed)
                     {
-                        closestDistPixel = dist;
-                        closestIndex = i;
-                    }
-                }
-
-                if (closestIndex >= 0 && closestDistPixel <= 40.0)
-                {
-                    if (closestIndex != lastHighlightedIndex)
-                    {
-                        lastHighlightedIndex = closestIndex;
-
-                        double xVal = s.N[closestIndex];
-                        double yVal = s.T[closestIndex] * unitScale;
-                        double yThVal = s.TFit.Count > closestIndex ? s.TFit[closestIndex] * unitScale : 0;
-
-                        highlightMarker.Coordinates = new Coordinates(xVal, yVal);
-                        highlightMarker.IsVisible = true;
-
-                        crosshair.Position = new Coordinates(xVal, yVal);
-                        crosshair.IsVisible = true;
-
-                        string sdStr = "";
-                        if (s.StdDev.Count > closestIndex && s.StdDev[closestIndex] > 1e-12)
+                        // Пользователь выполняет панорамирование (Pan) или масштабирование (Zoom) — не мешаем ScottPlot и не вызываем Refresh!
+                        if (curCtx.LastHighlightedIndex != -1)
                         {
-                            double sdVal = s.StdDev[closestIndex] * unitScale;
-                            sdStr = $" (±{sdVal:0.##} {unitName})";
+                            curCtx.LastHighlightedIndex = -1;
+                            if (curCtx.HighlightMarker != null) curCtx.HighlightMarker.IsVisible = false;
+                            if (curCtx.Crosshair != null) curCtx.Crosshair.IsVisible = false;
+                            if (curCtx.InspectorAnno != null) curCtx.InspectorAnno.IsVisible = false;
+                            avaPlot.Refresh();
                         }
+                        return;
+                    }
 
-                        string thStr = (yThVal >= 0.001 && yThVal < 10000)
-                            ? yThVal.ToString("0.###", CultureInfo.InvariantCulture)
-                            : yThVal.ToString("0.###E+00", CultureInfo.InvariantCulture);
+                    var curPlt = avaPlot.Plot;
+                    var pt = e.GetPosition(avaPlot);
+                    Pixel mousePixel = new Pixel((float)pt.X, (float)pt.Y);
 
-                        string factStr = (yVal >= 0.001 && yVal < 10000)
-                            ? yVal.ToString("0.###", CultureInfo.InvariantCulture)
-                            : yVal.ToString("0.###E+00", CultureInfo.InvariantCulture);
+                    int closestIndex = -1;
+                    double closestDistPixel = double.MaxValue;
+                    var ser = curCtx.Series;
+                    double scale = curCtx.UnitScale;
 
-                        string baseInfo = "";
-                        if (_currentBaselineSeries != null &&
-                            _currentBaselineSeries.TryGetValue(s.Algo.Name, out var bSeries) &&
-                            bSeries != null && bSeries.N.Count > 0)
+                    for (int i = 0; i < ser.N.Count; i++)
+                    {
+                        double xVal = ser.N[i];
+                        double yVal = ser.T[i] * scale;
+
+                        Coordinates ptCoord = new Coordinates(xVal, yVal);
+                        Pixel ptPixel = curPlt.GetPixel(ptCoord);
+
+                        double dx = ptPixel.X - mousePixel.X;
+                        double dy = ptPixel.Y - mousePixel.Y;
+                        double dist = Math.Sqrt(dx * dx + dy * dy);
+
+                        if (dist < closestDistPixel)
                         {
-                            int bIdx = bSeries.N.IndexOf(s.N[closestIndex]);
-                            if (bIdx >= 0 && bIdx < bSeries.T.Count)
+                            closestDistPixel = dist;
+                            closestIndex = i;
+                        }
+                    }
+
+                    if (closestIndex >= 0 && closestDistPixel <= 40.0)
+                    {
+                        if (closestIndex != curCtx.LastHighlightedIndex)
+                        {
+                            curCtx.LastHighlightedIndex = closestIndex;
+
+                            double xVal = ser.N[closestIndex];
+                            double yVal = ser.T[closestIndex] * scale;
+                            double yThVal = ser.TFit.Count > closestIndex ? ser.TFit[closestIndex] * scale : 0;
+
+                            if (curCtx.HighlightMarker != null)
                             {
-                                double bVal = bSeries.T[bIdx] * unitScale;
-                                double diff = bVal > 1e-15 ? ((yVal - bVal) / bVal) * 100.0 : 0;
-                                string sign = diff >= 0 ? "+" : "";
-                                baseInfo = $"  |  База: {bVal:0.###} {unitName} ({sign}{diff:F1}%)";
+                                curCtx.HighlightMarker.Coordinates = new Coordinates(xVal, yVal);
+                                curCtx.HighlightMarker.IsVisible = true;
                             }
+
+                            if (curCtx.Crosshair != null)
+                            {
+                                curCtx.Crosshair.Position = new Coordinates(xVal, yVal);
+                                curCtx.Crosshair.IsVisible = true;
+                            }
+
+                            string sdStr = "";
+                            if (ser.StdDev.Count > closestIndex && ser.StdDev[closestIndex] > 1e-12)
+                            {
+                                double sdVal = ser.StdDev[closestIndex] * scale;
+                                sdStr = $" (±{sdVal:0.##} {curCtx.UnitName})";
+                            }
+
+                            string thStr = (yThVal >= 0.001 && yThVal < 10000)
+                                ? yThVal.ToString("0.###", CultureInfo.InvariantCulture)
+                                : yThVal.ToString("0.###E+00", CultureInfo.InvariantCulture);
+
+                            string factStr = (yVal >= 0.001 && yVal < 10000)
+                                ? yVal.ToString("0.###", CultureInfo.InvariantCulture)
+                                : yVal.ToString("0.###E+00", CultureInfo.InvariantCulture);
+
+                            string baseInfo = "";
+                            if (_currentBaselineSeries != null &&
+                                _currentBaselineSeries.TryGetValue(ser.Algo.Name, out var bSeries) &&
+                                bSeries != null && bSeries.N.Count > 0)
+                            {
+                                int bIdx = bSeries.N.IndexOf(ser.N[closestIndex]);
+                                if (bIdx >= 0 && bIdx < bSeries.T.Count)
+                                {
+                                    double bVal = bSeries.T[bIdx] * scale;
+                                    double diff = bVal > 1e-15 ? ((yVal - bVal) / bVal) * 100.0 : 0;
+                                    string sign = diff >= 0 ? "+" : "";
+                                    baseInfo = $"  |  База: {bVal:0.###} {curCtx.UnitName} ({sign}{diff:F1}%)";
+                                }
+                            }
+
+                            if (curCtx.InspectorAnno != null)
+                            {
+                                curCtx.InspectorAnno.LabelText = $"● n = {xVal:N0}  |  Факт: {factStr} {curCtx.UnitName}{sdStr}  |  Теория: {thStr} {curCtx.UnitName}{baseInfo}";
+                                curCtx.InspectorAnno.IsVisible = true;
+                            }
+
+                            avaPlot.Refresh();
                         }
-
-                        inspectorAnno.LabelText = $"● n = {xVal:N0}  |  Факт: {factStr} {unitName}{sdStr}  |  Теория: {thStr} {unitName}{baseInfo}";
-                        inspectorAnno.IsVisible = true;
-
-                        avaPlot.Refresh();
                     }
-                }
-                else
-                {
-                    if (lastHighlightedIndex != -1)
+                    else
                     {
-                        lastHighlightedIndex = -1;
-                        highlightMarker.IsVisible = false;
-                        crosshair.IsVisible = false;
-                        inspectorAnno.IsVisible = false;
+                        if (curCtx.LastHighlightedIndex != -1)
+                        {
+                            curCtx.LastHighlightedIndex = -1;
+                            if (curCtx.HighlightMarker != null) curCtx.HighlightMarker.IsVisible = false;
+                            if (curCtx.Crosshair != null) curCtx.Crosshair.IsVisible = false;
+                            if (curCtx.InspectorAnno != null) curCtx.InspectorAnno.IsVisible = false;
+                            avaPlot.Refresh();
+                        }
+                    }
+                };
+
+                avaPlot.PointerExited += (sender, e) =>
+                {
+                    var curCtx = avaPlot.Tag as PlotInteractivityContext;
+                    if (curCtx != null && curCtx.LastHighlightedIndex != -1)
+                    {
+                        curCtx.LastHighlightedIndex = -1;
+                        if (curCtx.HighlightMarker != null) curCtx.HighlightMarker.IsVisible = false;
+                        if (curCtx.Crosshair != null) curCtx.Crosshair.IsVisible = false;
+                        if (curCtx.InspectorAnno != null) curCtx.InspectorAnno.IsVisible = false;
                         avaPlot.Refresh();
                     }
-                }
-            };
+                };
+            }
 
-            avaPlot.PointerExited += (sender, e) =>
-            {
-                if (lastHighlightedIndex != -1)
-                {
-                    lastHighlightedIndex = -1;
-                    highlightMarker.IsVisible = false;
-                    crosshair.IsVisible = false;
-                    inspectorAnno.IsVisible = false;
-                    avaPlot.Refresh();
-                }
-            };
+            ctx.Series = s;
+            ctx.UnitName = unitName;
+            ctx.UnitScale = unitScale;
+            ctx.HighlightMarker = highlightMarker;
+            ctx.Crosshair = crosshair;
+            ctx.InspectorAnno = inspectorAnno;
+            ctx.LastHighlightedIndex = -1;
         }
 
         public void OpenOrSwitchToAlgoTab(string algoName)
