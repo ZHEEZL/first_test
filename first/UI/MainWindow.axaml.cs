@@ -403,39 +403,46 @@ namespace first
 
                 await Task.Run(() =>
                 {
-                    var ctx = new ExperimentContext(maxVectorN, seed);
-                    if (warmup)
+                    using (ThreadAffinityScope.PinToDedicatedCore())
                     {
-                        Dispatcher.UIThread.Post(() => SetStatus("Прогрев процессора и JIT..."));
-                        Bench.GlobalWarmup(ctx);
-                    }
+                        int targetCore = Environment.ProcessorCount >= 2 ? 1 : 0;
+                        Dispatcher.UIThread.Post(() => AppendLog(
+                            $"[Изоляция замеров] Рабочий поток привязан к CPU Core {targetCore} | Приоритет: Highest | Режим GC: LowLatency на время тайминга"));
 
-                    for (int i = 0; i < selected.Count; i++)
-                    {
-                        token.ThrowIfCancellationRequested();
-                        var item = selected[i];
-                        var algo = item.Factory();
-                        algo.P.MaxN = item.MaxN;
-                        algo.P.Step = item.Step;
-                        algo.P.Runs = item.Runs;
-
-                        int curIdx = i + 1;
-                        Dispatcher.UIThread.Post(() =>
+                        var ctx = new ExperimentContext(maxVectorN, seed);
+                        if (warmup)
                         {
-                            SetStatus($"[{curIdx}/{selected.Count}] Выполняется: {algo.Name}...");
-                            AppendLog($"\n=== {algo.Name} [{algo.Cls.Name}] (MaxN = {item.MaxN}, Step = {item.Step}, Runs = {item.Runs}) ===");
-                        });
+                            Dispatcher.UIThread.Post(() => SetStatus("Прогрев процессора и JIT..."));
+                            Bench.GlobalWarmup(ctx);
+                        }
 
-                        var s = Bench.Run(algo, ctx, experimentId, useCache, forceRecalc,
-                            log => Dispatcher.UIThread.Post(() => AppendLog(log)),
-                            (pt, totalPts) =>
+                        for (int i = 0; i < selected.Count; i++)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            var item = selected[i];
+                            var algo = item.Factory();
+                            algo.P.MaxN = item.MaxN;
+                            algo.P.Step = item.Step;
+                            algo.P.Runs = item.Runs;
+
+                            int curIdx = i + 1;
+                            Dispatcher.UIThread.Post(() =>
                             {
-                                int pct = (int)(((curIdx - 1 + (double)pt / totalPts) / selected.Count) * 100);
-                                Dispatcher.UIThread.Post(() => ProgressBarMain.Value = pct);
-                            },
-                            token);
+                                SetStatus($"[{curIdx}/{selected.Count}] Выполняется: {algo.Name}...");
+                                AppendLog($"\n=== {algo.Name} [{algo.Cls.Name}] (MaxN = {item.MaxN}, Step = {item.Step}, Runs = {item.Runs}) ===");
+                            });
 
-                        results.Add(s);
+                            var s = Bench.Run(algo, ctx, experimentId, useCache, forceRecalc,
+                                log => Dispatcher.UIThread.Post(() => AppendLog(log)),
+                                (pt, totalPts) =>
+                                {
+                                    int pct = (int)(((curIdx - 1 + (double)pt / totalPts) / selected.Count) * 100);
+                                    Dispatcher.UIThread.Post(() => ProgressBarMain.Value = pct);
+                                },
+                                token);
+
+                            results.Add(s);
+                        }
                     }
                 }, token);
 

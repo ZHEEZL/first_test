@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime;
 using System.Text;
 using System.Threading;
 using Avalonia;
@@ -65,6 +66,8 @@ namespace first
                     Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
                 }
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
+                GCSettings.LatencyMode = GCLatencyMode.Batch;
+                Console.WriteLine("[Изоляция процесса] CPU: Core 0 | Приоритет: High | GC: Batch (неконкурентный)");
             }
             catch
             {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Runtime;
 using System.Threading;
 
 namespace first
@@ -22,7 +23,21 @@ namespace first
             experimentId = experimentId ?? Guid.NewGuid().ToString("N");
             var p = algo.P;
 
-            if (algo is MatrixMultiply mm)
+            var prevLatency = GCSettings.LatencyMode;
+            bool switchedLatency = false;
+            try
+            {
+                if (!algo.MeasuresSteps && prevLatency != GCLatencyMode.Batch)
+                {
+                    try
+                    {
+                        GCSettings.LatencyMode = GCLatencyMode.LowLatency;
+                        switchedLatency = true;
+                    }
+                    catch { }
+                }
+
+                if (algo is MatrixMultiply mm)
             {
                 int maxM = p.MaxN;
                 int maxN = p.MaxN;
@@ -250,6 +265,14 @@ namespace first
             Console.WriteLine(msgEnd);
             log?.Invoke(msgEnd);
             return s;
+            }
+            finally
+            {
+                if (switchedLatency)
+                {
+                    try { GCSettings.LatencyMode = prevLatency; } catch { }
+                }
+            }
         }
 
         public static string FormatTime(double sec)
