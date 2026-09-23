@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Threading;
 using ScottPlot;
 using ScottPlot.Avalonia;
@@ -53,6 +55,9 @@ namespace first
 
         private ObservableCollection<AlgoSummaryRow> _summaryRows = new ObservableCollection<AlgoSummaryRow>();
         private List<TabItem> _dynamicTabs = new List<TabItem>();
+        private Dictionary<string, TabItem> _allDynamicTabs = new Dictionary<string, TabItem>();
+        private bool _isSidebarCollapsed = false;
+        private double _lastSidebarWidth = 380.0;
 
         public MainWindow()
         {
@@ -79,6 +84,9 @@ namespace first
             BtnRun.Click += async (s, e) => await StartExperimentAsync();
             BtnCancel.Click += (s, e) => _cts?.Cancel();
 
+            BtnToggleSidebar.Click += (s, e) => ToggleSidebar();
+            BtnTabListMenu.Click += (s, e) => ShowTabListMenu();
+
             BtnExportCsv.Click += OnExportCsvClick;
             BtnExportPng.Click += OnExportPngClick;
             BtnManageHistory.Click += OnManageHistoryClick;
@@ -89,6 +97,7 @@ namespace first
 
             TabsMain.SelectionChanged += (s, e) => OnTabChanged();
             PnlHistoryCompare.IsVisible = false;
+            UpdateTabListMenuButton();
         }
 
         private void OnTabChanged()
@@ -100,15 +109,14 @@ namespace first
                 return;
             }
 
-            string header = tab.Header?.ToString() ?? "";
-            if (!header.StartsWith("📈 "))
+            string algoName = tab.Tag as string;
+            if (string.IsNullOrEmpty(algoName) || algoName == "summary" || algoName == "log" || algoName.Contains("Матричное"))
             {
                 PnlHistoryCompare.IsVisible = false;
                 return;
             }
 
             PnlHistoryCompare.IsVisible = true;
-            string algoName = (tab.Tag as string) ?? header.Substring(header.IndexOf(' ') + 1).Trim();
             UpdateBaselineComboForAlgo(algoName);
             EnsureTabPlotUpdated(tab, algoName);
         }
@@ -601,13 +609,14 @@ namespace first
 
                         var tabItem3D = new TabItem
                         {
-                            Header = "🧊 Матрица 3D",
                             Tag = kv.Key,
                             Content = panel3d,
-                            FontSize = 13
+                            FontSize = 12
                         };
+                        tabItem3D.Header = CreateTabHeader("Матрица 3D", "🧊", tabItem3D, true);
 
                         _dynamicTabs.Add(tabItem3D);
+                        _allDynamicTabs[kv.Key] = tabItem3D;
                         TabsMain.Items.Add(tabItem3D);
                         continue;
                     }
@@ -619,16 +628,18 @@ namespace first
 
                 var tabItem = new TabItem
                 {
-                    Header = $"📈 {kv.Key}",
                     Tag = kv.Key,
                     Content = avaPlot,
-                    FontSize = 13
+                    FontSize = 12
                 };
+                tabItem.Header = CreateTabHeader(kv.Key, "📈", tabItem, true);
 
                 _dynamicTabs.Add(tabItem);
+                _allDynamicTabs[kv.Key] = tabItem;
                 TabsMain.Items.Add(tabItem);
             }
 
+            UpdateTabListMenuButton();
             TabsMain.SelectedIndex = 0;
         }
 
@@ -639,6 +650,171 @@ namespace first
                 TabsMain.Items.Remove(tab);
             }
             _dynamicTabs.Clear();
+            _allDynamicTabs.Clear();
+            UpdateTabListMenuButton();
+        }
+
+        private Control CreateTabHeader(string title, string icon, TabItem tabItem, bool canClose)
+        {
+            var panel = new StackPanel
+            {
+                Orientation = Avalonia.Layout.Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            };
+
+            var iconTb = new TextBlock
+            {
+                Text = icon,
+                FontSize = 12,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            };
+            panel.Children.Add(iconTb);
+
+            var textTb = new TextBlock
+            {
+                Text = title,
+                FontSize = 12,
+                MaxWidth = 170,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            };
+            ToolTip.SetTip(textTb, title);
+            panel.Children.Add(textTb);
+
+            if (canClose)
+            {
+                var btnClose = new Button
+                {
+                    Content = "×",
+                    Padding = new Thickness(0),
+                    Width = 16,
+                    Height = 16,
+                    FontSize = 13,
+                    FontWeight = Avalonia.Media.FontWeight.Bold,
+                    Background = Brushes.Transparent,
+                    Foreground = Brush.Parse("#9CA3AF"),
+                    BorderThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(8),
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                    VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    Margin = new Thickness(4, 0, 0, 0)
+                };
+                ToolTip.SetTip(btnClose, "Закрыть вкладку");
+                btnClose.Click += (s, e) =>
+                {
+                    e.Handled = true;
+                    CloseTab(tabItem);
+                };
+                panel.Children.Add(btnClose);
+            }
+
+            return panel;
+        }
+
+        private void CloseTab(TabItem tabItem)
+        {
+            if (tabItem == null) return;
+            int index = TabsMain.Items.IndexOf(tabItem);
+            if (index >= 0)
+            {
+                TabsMain.Items.Remove(tabItem);
+                if (TabsMain.SelectedIndex < 0 || TabsMain.SelectedItem == null)
+                {
+                    TabsMain.SelectedIndex = Math.Clamp(index - 1, 0, TabsMain.Items.Count - 1);
+                }
+            }
+            UpdateTabListMenuButton();
+        }
+
+        private void UpdateTabListMenuButton()
+        {
+            int openCount = TabsMain.Items.Count;
+            BtnTabListMenu.Content = $"📑 Вкладки ({openCount}) ▼";
+        }
+
+        private void ToggleSidebar()
+        {
+            var col = MainGrid.ColumnDefinitions[0];
+            if (!_isSidebarCollapsed)
+            {
+                _lastSidebarWidth = col.Width.Value > 50 ? col.Width.Value : 380.0;
+                col.MinWidth = 0;
+                col.Width = new GridLength(0);
+                _isSidebarCollapsed = true;
+                BtnToggleSidebar.Content = "◧ Развернуть";
+                ToolTip.SetTip(BtnToggleSidebar, "Развернуть панель параметров");
+            }
+            else
+            {
+                col.MinWidth = 260;
+                col.Width = new GridLength(_lastSidebarWidth);
+                _isSidebarCollapsed = false;
+                BtnToggleSidebar.Content = "◨ Панель";
+                ToolTip.SetTip(BtnToggleSidebar, "Свернуть панель параметров");
+            }
+        }
+
+        private void ShowTabListMenu()
+        {
+            var menu = new ContextMenu();
+
+            var itemSummary = new MenuItem { Header = "📋 Сводка" };
+            itemSummary.Click += (s, e) => { TabsMain.SelectedIndex = 0; };
+            menu.Items.Add(itemSummary);
+
+            var itemLog = new MenuItem { Header = "📝 Журнал" };
+            itemLog.Click += (s, e) => { TabsMain.SelectedIndex = 1; };
+            menu.Items.Add(itemLog);
+
+            if (_allDynamicTabs.Count > 0)
+            {
+                menu.Items.Add(new Separator());
+
+                foreach (var kv in _allDynamicTabs)
+                {
+                    string algoName = kv.Key;
+                    var tab = kv.Value;
+                    bool isOpen = TabsMain.Items.Contains(tab);
+
+                    string prefix = algoName.Contains("Матричное") ? "🧊 " : "📈 ";
+                    var item = new MenuItem
+                    {
+                        Header = isOpen ? $"✔ {prefix}{algoName}" : $"  {prefix}{algoName} (закрыта)",
+                        Foreground = isOpen ? Brush.Parse("#60A5FA") : Brush.Parse("#9CA3AF")
+                    };
+
+                    item.Click += (s, e) =>
+                    {
+                        if (!TabsMain.Items.Contains(tab))
+                        {
+                            TabsMain.Items.Add(tab);
+                        }
+                        TabsMain.SelectedItem = tab;
+                        UpdateTabListMenuButton();
+                    };
+
+                    menu.Items.Add(item);
+                }
+
+                menu.Items.Add(new Separator());
+                var itemRestoreAll = new MenuItem { Header = "↺ Показать все графики" };
+                itemRestoreAll.Click += (s, e) =>
+                {
+                    foreach (var kv in _allDynamicTabs)
+                    {
+                        if (!TabsMain.Items.Contains(kv.Value))
+                        {
+                            TabsMain.Items.Add(kv.Value);
+                        }
+                    }
+                    UpdateTabListMenuButton();
+                };
+                menu.Items.Add(itemRestoreAll);
+            }
+
+            menu.Open(BtnTabListMenu);
         }
 
         private void SetStatus(string text)

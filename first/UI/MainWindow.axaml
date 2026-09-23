@@ -29,9 +29,117 @@
         <Style Selector="CheckBox">
             <Setter Property="Cursor" Value="Hand" />
         </Style>
+
+        <!-- Сплиттер: интерактивная подсветка и маркер -->
+        <Style Selector="GridSplitter:pointerover Border">
+            <Setter Property="Background" Value="#1E232E" />
+            <Setter Property="BorderBrush" Value="#3B82F6" />
+        </Style>
+        <Style Selector="GridSplitter:pointerover Ellipse">
+            <Setter Property="Fill" Value="#60A5FA" />
+        </Style>
+
+        <!-- Стилизация TabControl под вкладки браузера (Chrome / Arc style) -->
+        <Style Selector="TabControl.browser-tabs">
+            <Setter Property="Background" Value="#181A20" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate TargetType="TabControl">
+                    <Border BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Background="{TemplateBinding Background}">
+                        <DockPanel>
+                            <!-- Полоса вкладок браузера (Tabstrip) с плавной горизонтальной прокруткой -->
+                            <Border DockPanel.Dock="Top"
+                                    Background="#12141A"
+                                    BorderBrush="#262A36"
+                                    BorderThickness="0,0,0,1"
+                                    Padding="6,6,6,0">
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                              VerticalScrollBarVisibility="Disabled">
+                                    <ItemsPresenter Name="PART_ItemsPresenter"
+                                                    ItemsPanel="{TemplateBinding ItemsPanel}" />
+                                </ScrollViewer>
+                            </Border>
+
+                            <!-- Контент активной вкладки -->
+                            <ContentPresenter Name="PART_SelectedContentHost"
+                                              Margin="{TemplateBinding Padding}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              Content="{TemplateBinding SelectedContent}"
+                                              ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                        </DockPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Setter Property="ItemsPanel">
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="2" />
+                </ItemsPanelTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Стилизация самих вкладок (TabItem) в виде карточек браузера -->
+        <Style Selector="TabControl.browser-tabs TabItem">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="MinWidth" Value="90" />
+            <Setter Property="MaxWidth" Value="240" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Margin" Value="0,0,2,0" />
+            <Setter Property="VerticalAlignment" Value="Bottom" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="CornerRadius" Value="8,8,0,0" />
+            <Setter Property="Background" Value="#1A1D25" />
+            <Setter Property="Foreground" Value="#9CA3AF" />
+            <Setter Property="BorderBrush" Value="#2D323F" />
+            <Setter Property="BorderThickness" Value="1,1,1,0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <!-- Скрываем стандартный Fluent-индикатор снизу -->
+        <Style Selector="TabControl.browser-tabs TabItem /template/ Border#PART_SelectedPipe">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+
+        <!-- Скругление внутренней рамки вкладки -->
+        <Style Selector="TabControl.browser-tabs TabItem /template/ Border#PART_LayoutRoot">
+            <Setter Property="CornerRadius" Value="8,8,0,0" />
+        </Style>
+
+        <!-- Наведение на неактивную вкладку -->
+        <Style Selector="TabControl.browser-tabs TabItem:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="#262C38" />
+        </Style>
+        <Style Selector="TabControl.browser-tabs TabItem:pointerover">
+            <Setter Property="Foreground" Value="#F3F4F6" />
+        </Style>
+
+        <!-- Активная вкладка: фон страницы + акцентная синяя линия сверху -->
+        <Style Selector="TabControl.browser-tabs TabItem:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="#181A20" />
+            <Setter Property="BorderBrush" Value="#3B82F6" />
+            <Setter Property="BorderThickness" Value="1,2,1,0" />
+        </Style>
+        <Style Selector="TabControl.browser-tabs TabItem:selected">
+            <Setter Property="Foreground" Value="#60A5FA" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TabControl.browser-tabs TabItem:selected:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="#181A20" />
+        </Style>
     </Window.Styles>
 
-    <Grid ColumnDefinitions="380, *">
+    <Grid Name="MainGrid">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="380" MinWidth="260" MaxWidth="750" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="*" MinWidth="400" />
+        </Grid.ColumnDefinitions>
+
         <!-- Левая панель параметров -->
         <Border Grid.Column="0" Background="#1F2229" BorderBrush="#2D323F" BorderThickness="0,0,1,0" Padding="14">
             <Grid RowDefinitions="Auto, Auto, *, Auto, Auto, Auto">
@@ -96,14 +204,40 @@
             </Grid>
         </Border>
 
+        <!-- Разделитель сплиттера для изменения ширины левой панели -->
+        <GridSplitter Grid.Column="1"
+                      Width="6"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="#181A20"
+                      ResizeDirection="Columns"
+                      ShowsPreview="False"
+                      Cursor="SizeWestEast">
+            <GridSplitter.Template>
+                <ControlTemplate>
+                    <Border Background="#14161D" BorderBrush="#2D323F" BorderThickness="1,0,1,0">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="4">
+                            <Ellipse Width="3" Height="3" Fill="#6B7280" />
+                            <Ellipse Width="3" Height="3" Fill="#6B7280" />
+                            <Ellipse Width="3" Height="3" Fill="#6B7280" />
+                            <Ellipse Width="3" Height="3" Fill="#6B7280" />
+                            <Ellipse Width="3" Height="3" Fill="#6B7280" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </GridSplitter.Template>
+        </GridSplitter>
+
         <!-- Правая основная область -->
-        <Grid Grid.Column="1" RowDefinitions="Auto, *">
+        <Grid Grid.Column="2" RowDefinitions="Auto, *">
             <!-- Верхний тулбар -->
             <Border Grid.Row="0" Background="#1F2229" BorderBrush="#2D323F" BorderThickness="0,0,0,1" Padding="12,8">
                 <Grid ColumnDefinitions="Auto, *, Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                        <Button Name="BtnToggleSidebar" Content="◨ Панель" Padding="8,4" FontSize="12" Background="#262B37" Foreground="#9CA3AF" ToolTip.Tip="Свернуть / развернуть панель параметров" />
                         <Button Name="BtnExportCsv" Content="📊 CSV" Padding="8,4" FontSize="12" ToolTip.Tip="Экспорт сводки в CSV" />
                         <Button Name="BtnExportPng" Content="🖼 PNG" Padding="8,4" FontSize="12" ToolTip.Tip="Сохранить графики в charts/" />
+                        <Button Name="BtnTabListMenu" Content="📑 Вкладки ▼" Padding="8,4" FontSize="12" Background="#1E232E" BorderBrush="#2D323F" BorderThickness="1" Foreground="#93C5FD" ToolTip.Tip="Быстрый выбор или восстановление закрытых вкладок" />
                     </StackPanel>
 
                     <!-- Панель сравнения с историей -->
@@ -117,10 +251,16 @@
                 </Grid>
             </Border>
 
-            <!-- Основной TabControl -->
-            <TabControl Grid.Row="1" Name="TabsMain" Background="#181A20" Margin="0">
+            <!-- Основной TabControl (Browser Tabs) -->
+            <TabControl Grid.Row="1" Name="TabsMain" Classes="browser-tabs" Background="#181A20" Margin="0">
                 <!-- Вкладка Сводка -->
-                <TabItem Header="📋 Сводка" FontSize="13">
+                <TabItem Tag="summary" FontSize="13">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="📋" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="Сводка" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </TabItem.Header>
                     <DataGrid Name="GridSummary"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
@@ -149,7 +289,13 @@
                 </TabItem>
 
                 <!-- Вкладка Журнал -->
-                <TabItem Header="📝 Журнал" FontSize="13">
+                <TabItem Tag="log" FontSize="13">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="📝" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="Журнал" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </TabItem.Header>
                     <TextBox Name="TxtLog"
                              IsReadOnly="True"
                              AcceptsReturn="True"
