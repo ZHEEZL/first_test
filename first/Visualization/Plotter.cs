@@ -221,6 +221,23 @@ namespace first
                     plt.Legend.FontColor = Color.FromHex("#F3F4F6");
                 }
 
+                plt.Axes.AutoScale();
+                if (ysFact.Length > 0)
+                {
+                    double minY = ysFact.Min();
+                    double maxY = ysFact.Max();
+                    if (Math.Abs(maxY - minY) < 1e-9)
+                    {
+                        double center = minY;
+                        double delta = Math.Max(Math.Abs(center) * 0.5, 1.0);
+                        plt.Axes.SetLimitsY(center - delta, center + delta);
+                    }
+                    else
+                    {
+                        plt.Axes.Margins(bottom: 0.12, top: 0.12);
+                    }
+                }
+
                 plots.Add(new KeyValuePair<string, Plot>(s.Algo.Name, plt));
             }
 

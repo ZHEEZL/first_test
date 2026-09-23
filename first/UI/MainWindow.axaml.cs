@@ -140,6 +140,9 @@ namespace first
                 if (avaPlot != null)
                 {
                     avaPlot.Reset(single[0].Value);
+                    string uName = GetSeriesUnitName(series);
+                    double uScale = GetSeriesUnitScale(series);
+                    SetupPlotInteractivity(avaPlot, series, uName, uScale);
                     avaPlot.Refresh();
                 }
 
@@ -283,6 +286,9 @@ namespace first
                     if (avaPlot != null)
                     {
                         avaPlot.Reset(single[0].Value);
+                        string uName = GetSeriesUnitName(series);
+                        double uScale = GetSeriesUnitScale(series);
+                        SetupPlotInteractivity(avaPlot, series, uName, uScale);
                         avaPlot.Refresh();
                     }
 
@@ -320,6 +326,13 @@ namespace first
                     if (avaPlot != null)
                     {
                         avaPlot.Reset(plotKv.Value);
+                        var s = _lastResults.FirstOrDefault(r => r.Algo.Name == name);
+                        if (s != null)
+                        {
+                            string uName = GetSeriesUnitName(s);
+                            double uScale = GetSeriesUnitScale(s);
+                            SetupPlotInteractivity(avaPlot, s, uName, uScale);
+                        }
                         avaPlot.Refresh();
                     }
                 }
@@ -578,8 +591,25 @@ namespace first
                         var panel3d = new Grid { RowDefinitions = new RowDefinitions("Auto, *") };
                         var toolBar3d = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6, Margin = new Thickness(8, 6) };
 
+                        int rowsM = mSeries.MatrixTimes.GetLength(0);
+                        int colsN = mSeries.MatrixTimes.GetLength(1);
+                        double maxSec = 0;
+                        for (int r = 0; r < rowsM; r++)
+                            for (int c = 0; c < colsN; c++)
+                                if (mSeries.MatrixTimes[r, c] > maxSec) maxSec = mSeries.MatrixTimes[r, c];
+
+                        double scale = 1e3;
+                        string unit = "мс";
+                        if (maxSec < 1e-3) { scale = 1e6; unit = "мкс"; }
+                        else if (maxSec >= 1.0) { scale = 1.0; unit = "с"; }
+
+                        double[,] scaledTimes = new double[rowsM, colsN];
+                        for (int r = 0; r < rowsM; r++)
+                            for (int c = 0; c < colsN; c++)
+                                scaledTimes[r, c] = mSeries.MatrixTimes[r, c] * scale;
+
                         var vp3d = new Matrix3DViewport();
-                        vp3d.SetData(mSeries.MatrixTimes, mSeries.MatrixStepM, mSeries.MatrixStepN, "мс");
+                        vp3d.SetData(scaledTimes, mSeries.MatrixStepM, mSeries.MatrixStepN, unit);
 
                         var btnShaded = new Button { Content = "Полигоны (Shaded)", FontSize = 11, Padding = new Thickness(8, 4) };
                         btnShaded.Click += (s, e) => { vp3d.Mode = ViewportMode.ShadedWireframe; vp3d.InvalidateVisual(); };
@@ -593,6 +623,13 @@ namespace first
                         var btnHeatmap = new Button { Content = "2D Heatmap", FontSize = 11, Padding = new Thickness(8, 4) };
                         btnHeatmap.Click += (s, e) => { vp3d.Mode = ViewportMode.Heatmap2D; vp3d.InvalidateVisual(); };
 
+                        var btnPanMode = new Button { Content = "🖐 Сдвиг (Pan)", FontSize = 11, Padding = new Thickness(8, 4) };
+                        btnPanMode.Click += (s, e) =>
+                        {
+                            vp3d.IsPanMode = !vp3d.IsPanMode;
+                            btnPanMode.Content = vp3d.IsPanMode ? "🔄 Вращение" : "🖐 Сдвиг (Pan)";
+                        };
+
                         var btnResetCam = new Button { Content = "↺ Сброс камеры", FontSize = 11, Padding = new Thickness(8, 4) };
                         btnResetCam.Click += (s, e) => vp3d.ResetCamera();
 
@@ -600,6 +637,7 @@ namespace first
                         toolBar3d.Children.Add(btnWire);
                         toolBar3d.Children.Add(btnPoints);
                         toolBar3d.Children.Add(btnHeatmap);
+                        toolBar3d.Children.Add(btnPanMode);
                         toolBar3d.Children.Add(btnResetCam);
 
                         Grid.SetRow(toolBar3d, 0);
@@ -624,6 +662,14 @@ namespace first
 
                 var avaPlot = new AvaPlot();
                 avaPlot.Reset(kv.Value);
+
+                var series = _lastResults.FirstOrDefault(s => s.Algo.Name == kv.Key);
+                if (series != null)
+                {
+                    string uName = GetSeriesUnitName(series);
+                    double uScale = GetSeriesUnitScale(series);
+                    SetupPlotInteractivity(avaPlot, series, uName, uScale);
+                }
                 avaPlot.Refresh();
 
                 var tabItem = new TabItem
@@ -880,6 +926,158 @@ namespace first
                 }
             };
             dlg.ShowDialog(this);
+        }
+
+        private static string GetSeriesUnitName(Series s)
+        {
+            if (s.MeasuresSteps) return "шагов";
+            double maxVal = s.T.Count > 0 ? s.T.Max() : 0;
+            if (maxVal < 1e-3) return "мкс";
+            if (maxVal < 1.0) return "мс";
+            return "с";
+        }
+
+        private static double GetSeriesUnitScale(Series s)
+        {
+            if (s.MeasuresSteps) return 1.0;
+            double maxVal = s.T.Count > 0 ? s.T.Max() : 0;
+            if (maxVal < 1e-3) return 1e6;
+            if (maxVal < 1.0) return 1e3;
+            return 1.0;
+        }
+
+        private void SetupPlotInteractivity(AvaPlot avaPlot, Series s, string unitName, double unitScale)
+        {
+            if (avaPlot == null || s == null || s.N.Count == 0) return;
+
+            var plt = avaPlot.Plot;
+
+            var highlightMarker = plt.Add.Marker(0, 0);
+            highlightMarker.IsVisible = false;
+            highlightMarker.Color = ScottPlot.Color.FromHex("#FBBF24");
+            highlightMarker.Size = 10;
+            highlightMarker.Shape = MarkerShape.OpenCircle;
+
+            var crosshair = plt.Add.Crosshair(0, 0);
+            crosshair.IsVisible = false;
+            crosshair.LineColor = ScottPlot.Color.FromHex("#FBBF24").WithAlpha(0.6f);
+            crosshair.LineWidth = 1.2f;
+            crosshair.LinePattern = LinePattern.Dashed;
+
+            var inspectorAnno = plt.Add.Annotation("", Alignment.UpperCenter);
+            inspectorAnno.IsVisible = false;
+            inspectorAnno.LabelBackgroundColor = ScottPlot.Color.FromHex("#1E232E").WithAlpha(0.92f);
+            inspectorAnno.LabelBorderColor = ScottPlot.Color.FromHex("#FBBF24");
+            inspectorAnno.LabelFontColor = ScottPlot.Color.FromHex("#FFFFFF");
+            inspectorAnno.LabelFontSize = 12;
+            inspectorAnno.LabelBold = true;
+
+            int lastHighlightedIndex = -1;
+
+            avaPlot.PointerMoved += (sender, e) =>
+            {
+                var pt = e.GetPosition(avaPlot);
+                Pixel mousePixel = new Pixel((float)pt.X, (float)pt.Y);
+                Coordinates mouseCoord = plt.GetCoordinates(mousePixel);
+
+                int closestIndex = -1;
+                double closestDistPixel = double.MaxValue;
+
+                for (int i = 0; i < s.N.Count; i++)
+                {
+                    double xVal = s.N[i];
+                    double yVal = s.T[i] * unitScale;
+
+                    Coordinates ptCoord = new Coordinates(xVal, yVal);
+                    Pixel ptPixel = plt.GetPixel(ptCoord);
+
+                    double dx = ptPixel.X - mousePixel.X;
+                    double dy = ptPixel.Y - mousePixel.Y;
+                    double dist = Math.Sqrt(dx * dx + dy * dy);
+
+                    if (dist < closestDistPixel)
+                    {
+                        closestDistPixel = dist;
+                        closestIndex = i;
+                    }
+                }
+
+                if (closestIndex >= 0 && closestDistPixel <= 40.0)
+                {
+                    if (closestIndex != lastHighlightedIndex)
+                    {
+                        lastHighlightedIndex = closestIndex;
+
+                        double xVal = s.N[closestIndex];
+                        double yVal = s.T[closestIndex] * unitScale;
+                        double yThVal = s.TFit.Count > closestIndex ? s.TFit[closestIndex] * unitScale : 0;
+
+                        highlightMarker.Coordinates = new Coordinates(xVal, yVal);
+                        highlightMarker.IsVisible = true;
+
+                        crosshair.Position = new Coordinates(xVal, yVal);
+                        crosshair.IsVisible = true;
+
+                        string sdStr = "";
+                        if (s.StdDev.Count > closestIndex && s.StdDev[closestIndex] > 1e-12)
+                        {
+                            double sdVal = s.StdDev[closestIndex] * unitScale;
+                            sdStr = $" (±{sdVal:0.##} {unitName})";
+                        }
+
+                        string thStr = (yThVal >= 0.001 && yThVal < 10000)
+                            ? yThVal.ToString("0.###", CultureInfo.InvariantCulture)
+                            : yThVal.ToString("0.###E+00", CultureInfo.InvariantCulture);
+
+                        string factStr = (yVal >= 0.001 && yVal < 10000)
+                            ? yVal.ToString("0.###", CultureInfo.InvariantCulture)
+                            : yVal.ToString("0.###E+00", CultureInfo.InvariantCulture);
+
+                        string baseInfo = "";
+                        if (_currentBaselineSeries != null &&
+                            _currentBaselineSeries.TryGetValue(s.Algo.Name, out var bSeries) &&
+                            bSeries != null && bSeries.N.Count > 0)
+                        {
+                            int bIdx = bSeries.N.IndexOf(s.N[closestIndex]);
+                            if (bIdx >= 0 && bIdx < bSeries.T.Count)
+                            {
+                                double bVal = bSeries.T[bIdx] * unitScale;
+                                double diff = bVal > 1e-15 ? ((yVal - bVal) / bVal) * 100.0 : 0;
+                                string sign = diff >= 0 ? "+" : "";
+                                baseInfo = $"  |  База: {bVal:0.###} {unitName} ({sign}{diff:F1}%)";
+                            }
+                        }
+
+                        inspectorAnno.LabelText = $"● n = {xVal:N0}  |  Факт: {factStr} {unitName}{sdStr}  |  Теория: {thStr} {unitName}{baseInfo}";
+                        inspectorAnno.IsVisible = true;
+
+                        avaPlot.Refresh();
+                    }
+                }
+                else
+                {
+                    if (lastHighlightedIndex != -1)
+                    {
+                        lastHighlightedIndex = -1;
+                        highlightMarker.IsVisible = false;
+                        crosshair.IsVisible = false;
+                        inspectorAnno.IsVisible = false;
+                        avaPlot.Refresh();
+                    }
+                }
+            };
+
+            avaPlot.PointerExited += (sender, e) =>
+            {
+                if (lastHighlightedIndex != -1)
+                {
+                    lastHighlightedIndex = -1;
+                    highlightMarker.IsVisible = false;
+                    crosshair.IsVisible = false;
+                    inspectorAnno.IsVisible = false;
+                    avaPlot.Refresh();
+                }
+            };
         }
     }
 }

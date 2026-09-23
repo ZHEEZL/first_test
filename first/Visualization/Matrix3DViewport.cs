@@ -21,6 +21,7 @@ namespace first
         public Vec3 CameraTarget = new Vec3(0.5, 0.25, 0.5);
         public double CameraFov = 52.0;
         public ViewportMode Mode = ViewportMode.ShadedWireframe;
+        public bool IsPanMode { get; set; } = false;
 
         private double[,] _data;
         private int _stepM = 10;
@@ -103,7 +104,8 @@ namespace first
                 double dx = pos.X - _lastMouse.X;
                 double dy = pos.Y - _lastMouse.Y;
 
-                if (!_isRightOrMiddle && (e.KeyModifiers & KeyModifiers.Shift) == 0)
+                bool shouldPan = _isRightOrMiddle || (e.KeyModifiers & KeyModifiers.Shift) != 0 || IsPanMode;
+                if (!shouldPan)
                 {
                     // Вращение камеры (Orbit)
                     CameraYaw = (CameraYaw + dx * 0.45) % 360.0;
@@ -517,25 +519,26 @@ namespace first
                 canvas.DrawCircle(hoverScreenPt, 4.5f, pDot);
 
                 // Карточка инспектора
-                float boxW = 260, boxH = 92;
+                float boxW = 320, boxH = 105;
                 float bx = hoverScreenPt.X + 16;
                 float by = hoverScreenPt.Y - boxH - 12;
                 if (bx + boxW > width - 10) bx = hoverScreenPt.X - boxW - 16;
                 if (by < 10) by = hoverScreenPt.Y + 16;
 
-                using var pCardBg = new SKPaint { Color = new SKColor(24, 28, 36, 240), Style = SKPaintStyle.Fill };
-                using var pCardBorder = new SKPaint { Color = new SKColor(96, 165, 250), Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, IsAntialias = true };
-                canvas.DrawRoundRect(new SKRoundRect(new SKRect(bx, by, bx + boxW, by + boxH), 6, 6), pCardBg);
-                canvas.DrawRoundRect(new SKRoundRect(new SKRect(bx, by, bx + boxW, by + boxH), 6, 6), pCardBorder);
+                using var pCardBg = new SKPaint { Color = new SKColor(20, 24, 34, 245), Style = SKPaintStyle.Fill };
+                using var pCardBorder = new SKPaint { Color = new SKColor(96, 165, 250), Style = SKPaintStyle.Stroke, StrokeWidth = 1.8f, IsAntialias = true };
+                canvas.DrawRoundRect(new SKRoundRect(new SKRect(bx, by, bx + boxW, by + boxH), 8, 8), pCardBg);
+                canvas.DrawRoundRect(new SKRoundRect(new SKRect(bx, by, bx + boxW, by + boxH), 8, 8), pCardBorder);
 
-                using var pTitle = new SKPaint { Color = new SKColor(245, 158, 11), TextSize = 12, FakeBoldText = true, IsAntialias = true };
-                using var pBody = new SKPaint { Color = SKColors.White, TextSize = 11, IsAntialias = true };
-                using var pMuted = new SKPaint { Color = new SKColor(156, 163, 175), TextSize = 10, IsAntialias = true };
+                using var pTitle = new SKPaint { Color = new SKColor(251, 191, 36), TextSize = 13, FakeBoldText = true, IsAntialias = true };
+                using var pBody = new SKPaint { Color = SKColors.White, TextSize = 12, IsAntialias = true };
+                using var pMuted = new SKPaint { Color = new SKColor(156, 163, 175), TextSize = 11, IsAntialias = true };
 
-                canvas.DrawText($"Узел матрицы: M={mVal}, N={nVal}", bx + 10, by + 18, pTitle);
-                canvas.DrawText($"• Время T: {tVal:F3} {_unitName}", bx + 10, by + 36, pBody);
-                canvas.DrawText($"• Операций: {ops:N0} (M²·N)", bx + 10, by + 54, pBody);
-                canvas.DrawText($"• Сетка: строка {hr + 1}/{rowsM}, стлб {hc + 1}/{colsN}", bx + 10, by + 72, pMuted);
+                string tFmt = (tVal >= 100) ? $"{tVal:F1} {_unitName}" : (tVal >= 1.0 ? $"{tVal:F3} {_unitName}" : $"{tVal:F4} {_unitName}");
+                canvas.DrawText($"Узел матрицы: M = {mVal}, N = {nVal}", bx + 12, by + 20, pTitle);
+                canvas.DrawText($"• Время T: {tFmt}", bx + 12, by + 40, pBody);
+                canvas.DrawText($"• Сложность: {ops:N0} операций (M²·N)", bx + 12, by + 60, pBody);
+                canvas.DrawText($"• Сетка: строка {hr + 1}/{rowsM}, столбец {hc + 1}/{colsN}", bx + 12, by + 80, pMuted);
             }
 
             // 7. HUD
@@ -553,8 +556,8 @@ namespace first
         {
             if (!project(new Vec3(0, 0, 0), out var p0, out _)) return;
 
-            using var pFontAxes = new SKPaint { TextSize = 12, FakeBoldText = true, IsAntialias = true };
-            using var pFontTicks = new SKPaint { TextSize = 10, IsAntialias = true };
+            using var pFontAxes = new SKPaint { TextSize = 14, FakeBoldText = true, IsAntialias = true };
+            using var pFontTicks = new SKPaint { TextSize = 12, FakeBoldText = true, IsAntialias = true };
 
             // Ось T (Красная, Вверх)
             if (project(new Vec3(0, 0.88, 0), out var ptEnd, out _))
@@ -563,7 +566,7 @@ namespace first
                 canvas.DrawLine(p0, ptEnd, penT);
                 DrawArrowHead(canvas, p0, ptEnd, penT);
                 pFontAxes.Color = new SKColor(231, 76, 60);
-                canvas.DrawText($"Ось T ({_unitName})", ptEnd.X - 10, ptEnd.Y - 12, pFontAxes);
+                canvas.DrawText($"Ось T ({_unitName})", ptEnd.X - 15, ptEnd.Y - 14, pFontAxes);
 
                 for (int k = 1; k <= 4; k++)
                 {
@@ -574,7 +577,8 @@ namespace first
                     {
                         canvas.DrawLine(pTick, pTickOut, penT);
                         pFontTicks.Color = new SKColor(231, 76, 60);
-                        canvas.DrawText($"{valT:F2}", pTickOut.X - 35, pTickOut.Y + 4, pFontTicks);
+                        string valTStr = rangeT >= 10 ? $"{valT:F1}" : (rangeT >= 1.0 ? $"{valT:F2}" : $"{valT:F3}");
+                        canvas.DrawText(valTStr, pTickOut.X - 44, pTickOut.Y + 4, pFontTicks);
                     }
                 }
             }
@@ -586,7 +590,7 @@ namespace first
                 canvas.DrawLine(p0, pmEnd, penM);
                 DrawArrowHead(canvas, p0, pmEnd, penM);
                 pFontAxes.Color = new SKColor(46, 204, 113);
-                canvas.DrawText("Ось M (строки A)", pmEnd.X + 8, pmEnd.Y + 4, pFontAxes);
+                canvas.DrawText("Ось M (строки A)", pmEnd.X + 8, pmEnd.Y + 5, pFontAxes);
 
                 for (int k = 1; k <= 5; k++)
                 {
@@ -597,7 +601,7 @@ namespace first
                     {
                         canvas.DrawLine(pTick, pTickOut, penM);
                         pFontTicks.Color = new SKColor(46, 204, 113);
-                        canvas.DrawText($"{valM}", pTickOut.X - 10, pTickOut.Y + 14, pFontTicks);
+                        canvas.DrawText($"{valM}", pTickOut.X - 10, pTickOut.Y + 16, pFontTicks);
                     }
                 }
             }
@@ -609,7 +613,7 @@ namespace first
                 canvas.DrawLine(p0, pnEnd, penN);
                 DrawArrowHead(canvas, p0, pnEnd, penN);
                 pFontAxes.Color = new SKColor(52, 152, 219);
-                canvas.DrawText("Ось N (столбцы A)", pnEnd.X - 120, pnEnd.Y + 16, pFontAxes);
+                canvas.DrawText("Ось N (столбцы A)", pnEnd.X - 130, pnEnd.Y + 18, pFontAxes);
 
                 for (int k = 1; k <= 5; k++)
                 {
@@ -620,7 +624,7 @@ namespace first
                     {
                         canvas.DrawLine(pTick, pTickOut, penN);
                         pFontTicks.Color = new SKColor(52, 152, 219);
-                        canvas.DrawText($"{valN}", pTickOut.X - 28, pTickOut.Y + 4, pFontTicks);
+                        canvas.DrawText($"{valN}", pTickOut.X - 32, pTickOut.Y + 4, pFontTicks);
                     }
                 }
             }
@@ -655,39 +659,39 @@ namespace first
         private void DrawHUD(SKCanvas canvas, int width, int height, int rowsM, int colsN, int maxM, int maxN)
         {
             // Верхняя плашка параметров
-            float infoW = 340, infoH = 80;
-            using var bgBadge = new SKPaint { Color = new SKColor(20, 24, 30, 220), Style = SKPaintStyle.Fill };
+            float infoW = 390, infoH = 88;
+            using var bgBadge = new SKPaint { Color = new SKColor(20, 24, 34, 235), Style = SKPaintStyle.Fill };
             using var borderBadge = new SKPaint { Color = new SKColor(60, 70, 85), Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
 
             canvas.DrawRoundRect(new SKRoundRect(new SKRect(12, 12, 12 + infoW, 12 + infoH), 6, 6), bgBadge);
             canvas.DrawRoundRect(new SKRoundRect(new SKRect(12, 12, 12 + infoW, 12 + infoH), 6, 6), borderBadge);
 
-            using var pTitle = new SKPaint { Color = new SKColor(245, 158, 11), TextSize = 12, FakeBoldText = true, IsAntialias = true };
-            using var pWhite = new SKPaint { Color = SKColors.White, TextSize = 11, IsAntialias = true };
-            using var pCyan = new SKPaint { Color = new SKColor(56, 189, 248), TextSize = 11, IsAntialias = true };
+            using var pTitle = new SKPaint { Color = new SKColor(251, 191, 36), TextSize = 13, FakeBoldText = true, IsAntialias = true };
+            using var pWhite = new SKPaint { Color = SKColors.White, TextSize = 12, IsAntialias = true };
+            using var pCyan = new SKPaint { Color = new SKColor(56, 189, 248), TextSize = 12, IsAntialias = true };
 
-            canvas.DrawText("▶ 3D Пространственная сложность T(M, N):", 20, 30, pTitle);
-            canvas.DrawText($"• Сетка: {rowsM} × {colsN} точек (шаг M={_stepM}, N={_stepN})", 20, 48, pWhite);
-            canvas.DrawText($"• Max M = {maxM}, Max N = {maxN}, T_max = {_maxT:F2} {_unitName}", 20, 64, pWhite);
-            canvas.DrawText($"• Камера: Yaw={CameraYaw:F0}°, Pitch={CameraPitch:F0}°, Dist={CameraDistance:F1}", 20, 80, pCyan);
+            canvas.DrawText("▶ 3D Пространственная сложность T(M, N):", 20, 32, pTitle);
+            canvas.DrawText($"• Сетка: {rowsM} × {colsN} узлов (шаг M={_stepM}, N={_stepN})", 20, 52, pWhite);
+            string maxTFmt = (_maxT >= 100) ? $"{_maxT:F1} {_unitName}" : (_maxT >= 1.0 ? $"{_maxT:F3} {_unitName}" : $"{_maxT:F4} {_unitName}");
+            canvas.DrawText($"• Max M = {maxM}, Max N = {maxN}, T_max = {maxTFmt}", 20, 70, pWhite);
+            canvas.DrawText($"• Камера: Yaw={CameraYaw:F0}°, Pitch={CameraPitch:F0}°, Дистанция={CameraDistance:F1}", 20, 88, pCyan);
 
             // Нижняя плашка подсказки управления
-            float ctrlW = 460, ctrlH = 68;
+            float ctrlW = 540, ctrlH = 72;
             float cy = height - ctrlH - 12;
 
             canvas.DrawRoundRect(new SKRoundRect(new SKRect(12, cy, 12 + ctrlW, cy + ctrlH), 6, 6), bgBadge);
             canvas.DrawRoundRect(new SKRoundRect(new SKRect(12, cy, 12 + ctrlW, cy + ctrlH), 6, 6), borderBadge);
 
-            using var pHint = new SKPaint { Color = new SKColor(209, 213, 219), TextSize = 10, IsAntialias = true };
-            canvas.DrawText("▶ Управление камерой:", 20, cy + 18, pTitle);
-            canvas.DrawText("• ЛКМ + Перетаскивание: Вращение камеры вокруг объекта (Orbit)", 20, cy + 34, pHint);
-            canvas.DrawText("• ПКМ / СКМ + Перетаскивание: Сдвиг сцены (Pan)  |  Колёсико: Масштаб (Zoom)", 20, cy + 48, pHint);
-            canvas.DrawText("• Клавиши WASD / QE: Полёт по сцене  |  Пробел: Сбросить камеру", 20, cy + 62, pHint);
+            using var pHint = new SKPaint { Color = new SKColor(229, 231, 235), TextSize = 11, IsAntialias = true };
+            canvas.DrawText("▶ Управление камерой и просмотр точек:", 20, cy + 20, pTitle);
+            canvas.DrawText("• ЛКМ: Вращение камеры (Orbit)  |  ПКМ / Shift+ЛКМ: Перемещение сцены (Pan)", 20, cy + 38, pHint);
+            canvas.DrawText("• Колёсико мыши: Масштаб (Zoom)  |  Наведение на узлы: Просмотр точных значений", 20, cy + 54, pHint);
         }
 
         private void Render2DHeatmap(SKCanvas canvas, int width, int height, int rowsM, int colsN, int maxM, int maxN)
         {
-            float padLeft = 70, padBottom = 60, padTop = 40, padRight = 120;
+            float padLeft = 80, padBottom = 60, padTop = 50, padRight = 130;
             float plotW = width - padLeft - padRight;
             float plotH = height - padTop - padBottom;
             if (plotW <= 10 || plotH <= 10) return;
@@ -714,10 +718,29 @@ namespace first
                 }
             }
 
+            // Подписи осей сетки
+            using var pGridText = new SKPaint { Color = new SKColor(209, 213, 219), TextSize = 11, IsAntialias = true };
+            for (int c = 0; c < colsN; c += Math.Max(1, colsN / 5))
+            {
+                int nVal = (c + 1) * _stepN;
+                float x = padLeft + c * cellW + cellW * 0.5f;
+                canvas.DrawText($"{nVal}", x - 10, padTop + plotH + 18, pGridText);
+            }
+            for (int r = 0; r < rowsM; r += Math.Max(1, rowsM / 5))
+            {
+                int mVal = (r + 1) * _stepM;
+                float y = padTop + (rowsM - 1 - r) * cellH + cellH * 0.5f;
+                canvas.DrawText($"{mVal}", padLeft - 32, y + 4, pGridText);
+            }
+
+            using var pAxisLabel = new SKPaint { Color = new SKColor(156, 163, 175), TextSize = 12, FakeBoldText = true, IsAntialias = true };
+            canvas.DrawText("Столбцы N", padLeft + plotW * 0.5f - 30, padTop + plotH + 38, pAxisLabel);
+            canvas.DrawText("Строки M", padLeft - 72, padTop - 15, pAxisLabel);
+
             // Шкала цветов (ColorBar)
-            float barX = width - padRight + 30;
+            float barX = width - padRight + 25;
             float barY = padTop;
-            float barW = 20;
+            float barW = 22;
             float barH = plotH;
             int gradSteps = 60;
             float stepH = barH / gradSteps;
@@ -732,13 +755,58 @@ namespace first
             using var pBarBorder = new SKPaint { Style = SKPaintStyle.Stroke, Color = SKColors.White, StrokeWidth = 1 };
             canvas.DrawRect(barX, barY, barW, barH, pBarBorder);
 
-            using var pText = new SKPaint { Color = SKColors.White, TextSize = 10, IsAntialias = true };
-            canvas.DrawText($"{_maxT:F2} {_unitName}", barX + barW + 6, barY + 10, pText);
-            canvas.DrawText($"{(_minT + _maxT) * 0.5:F2}", barX + barW + 6, barY + barH * 0.5f + 4, pText);
-            canvas.DrawText($"{_minT:F2}", barX + barW + 6, barY + barH, pText);
+            using var pText = new SKPaint { Color = SKColors.White, TextSize = 12, FakeBoldText = true, IsAntialias = true };
+            string topFmt = (_maxT >= 10) ? $"{_maxT:F1}" : $"{_maxT:F2}";
+            string midFmt = ((_minT + _maxT) * 0.5 >= 10) ? $"{(_minT + _maxT) * 0.5:F1}" : $"{(_minT + _maxT) * 0.5:F2}";
+            string botFmt = (_minT >= 10) ? $"{_minT:F1}" : $"{_minT:F2}";
 
-            using var pTitle = new SKPaint { Color = new SKColor(245, 158, 11), TextSize = 13, FakeBoldText = true, IsAntialias = true };
-            canvas.DrawText($"2D Тепловая карта T(M, N): время в {_unitName}", padLeft, padTop - 12, pTitle);
+            canvas.DrawText($"{topFmt} {_unitName}", barX + barW + 8, barY + 12, pText);
+            canvas.DrawText($"{midFmt}", barX + barW + 8, barY + barH * 0.5f + 4, pText);
+            canvas.DrawText($"{botFmt}", barX + barW + 8, barY + barH, pText);
+
+            using var pTitle = new SKPaint { Color = new SKColor(251, 191, 36), TextSize = 14, FakeBoldText = true, IsAntialias = true };
+            canvas.DrawText($"2D Тепловая карта T(M, N): время в {_unitName}", padLeft, padTop - 16, pTitle);
+
+            // Инспектор точки при наведении на ячейку в 2D Heatmap
+            if (_hoverMouse.X >= padLeft && _hoverMouse.X <= padLeft + plotW &&
+                _hoverMouse.Y >= padTop && _hoverMouse.Y <= padTop + plotH)
+            {
+                int hoverC = (int)((_hoverMouse.X - padLeft) / cellW);
+                int hoverR = rowsM - 1 - (int)((_hoverMouse.Y - padTop) / cellH);
+                if (hoverR >= 0 && hoverR < rowsM && hoverC >= 0 && hoverC < colsN)
+                {
+                    float hx = padLeft + hoverC * cellW;
+                    float hy = padTop + (rowsM - 1 - hoverR) * cellH;
+                    using var pHoverBorder = new SKPaint { Style = SKPaintStyle.Stroke, Color = new SKColor(251, 191, 36), StrokeWidth = 2.5f, IsAntialias = true };
+                    canvas.DrawRect(new SKRect(hx, hy, hx + cellW, hy + cellH), pHoverBorder);
+
+                    int hmVal = (hoverR + 1) * _stepM;
+                    int hnVal = (hoverC + 1) * _stepN;
+                    double htVal = _data[hoverR, hoverC];
+                    long hops = (long)hmVal * hmVal * hnVal;
+
+                    float boxW = 320, boxH = 105;
+                    float bx = (float)_hoverMouse.X + 16;
+                    float by = (float)_hoverMouse.Y - boxH - 12;
+                    if (bx + boxW > width - 10) bx = (float)_hoverMouse.X - boxW - 16;
+                    if (by < 10) by = (float)_hoverMouse.Y + 16;
+
+                    using var pCardBg = new SKPaint { Color = new SKColor(20, 24, 34, 245), Style = SKPaintStyle.Fill };
+                    using var pCardBorder = new SKPaint { Color = new SKColor(96, 165, 250), Style = SKPaintStyle.Stroke, StrokeWidth = 1.8f, IsAntialias = true };
+                    canvas.DrawRoundRect(new SKRoundRect(new SKRect(bx, by, bx + boxW, by + boxH), 8, 8), pCardBg);
+                    canvas.DrawRoundRect(new SKRoundRect(new SKRect(bx, by, bx + boxW, by + boxH), 8, 8), pCardBorder);
+
+                    using var pCardTitle = new SKPaint { Color = new SKColor(251, 191, 36), TextSize = 13, FakeBoldText = true, IsAntialias = true };
+                    using var pBody = new SKPaint { Color = SKColors.White, TextSize = 12, IsAntialias = true };
+                    using var pMuted = new SKPaint { Color = new SKColor(156, 163, 175), TextSize = 11, IsAntialias = true };
+
+                    string tFmt = (htVal >= 100) ? $"{htVal:F1} {_unitName}" : (htVal >= 1.0 ? $"{htVal:F3} {_unitName}" : $"{htVal:F4} {_unitName}");
+                    canvas.DrawText($"Ячейка матрицы: M = {hmVal}, N = {hnVal}", bx + 12, by + 20, pCardTitle);
+                    canvas.DrawText($"• Время T: {tFmt}", bx + 12, by + 40, pBody);
+                    canvas.DrawText($"• Операций: {hops:N0} (M²·N)", bx + 12, by + 60, pBody);
+                    canvas.DrawText($"• Сетка: строка {hoverR + 1}/{rowsM}, столбец {hoverC + 1}/{colsN}", bx + 12, by + 80, pMuted);
+                }
+            }
         }
 
         public static void RenderOffline(
