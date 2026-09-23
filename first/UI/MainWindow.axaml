@@ -131,6 +131,21 @@
         <Style Selector="TabControl.browser-tabs TabItem:selected:pointerover /template/ Border#PART_LayoutRoot">
             <Setter Property="Background" Value="#181A20" />
         </Style>
+
+        <!-- Стилизация ссылки на алгоритм в таблице сводки -->
+        <Style Selector="Button.algo-link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.algo-link:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#232C3D" />
+        </Style>
+        <Style Selector="Button.algo-link:pointerover TextBlock">
+            <Setter Property="Foreground" Value="#93C5FD" />
+        </Style>
     </Window.Styles>
 
     <Grid Name="MainGrid">
@@ -269,9 +284,43 @@
                               BorderBrush="#2D323F" BorderThickness="1"
                               Background="#181A20"
                               Margin="8"
-                              FontSize="12">
+                              FontSize="12"
+                              DoubleTapped="OnGridSummaryDoubleTapped"
+                              Tapped="OnGridSummaryTapped"
+                              KeyDown="OnGridSummaryKeyDown">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="📈 / 🧊 Открыть график алгоритма" Click="OnContextMenuOpenPlotClick" />
+                                <MenuItem Header="📋 Копировать строку в буфер" Click="OnContextMenuCopyRowClick" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Алгоритм" Binding="{Binding AlgoName}" Width="160" />
+                            <DataGridTemplateColumn Header="Алгоритм" SortMemberPath="AlgoName" Width="195">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="local:AlgoSummaryRow">
+                                        <Button Classes="algo-link"
+                                                Click="OnSummaryAlgoClick"
+                                                Tag="{Binding AlgoName}"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="4,2"
+                                                Cursor="Hand"
+                                                HorizontalAlignment="Stretch"
+                                                VerticalAlignment="Stretch"
+                                                HorizontalContentAlignment="Left"
+                                                ToolTip.Tip="Нажмите, чтобы открыть или перейти к графику алгоритма">
+                                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Icon}" FontSize="12" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding AlgoName}"
+                                                           Foreground="#60A5FA"
+                                                           FontWeight="SemiBold"
+                                                           TextDecorations="Underline"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Класс" Binding="{Binding ClassName}" Width="80" />
                             <DataGridTextColumn Header="Max N" Binding="{Binding MaxN}" Width="65" />
                             <DataGridTextColumn Header="Шаг" Binding="{Binding Step}" Width="55" />

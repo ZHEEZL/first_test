@@ -9,10 +9,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ScottPlot;
 using ScottPlot.Avalonia;
 
@@ -21,6 +24,7 @@ namespace first
     public sealed class AlgoSummaryRow
     {
         public string AlgoName { get; set; }
+        public string Icon => (AlgoName != null && AlgoName.Contains("Матричное")) ? "🧊" : "📈";
         public string ClassName { get; set; }
         public int MaxN { get; set; }
         public int Step { get; set; }
@@ -1078,6 +1082,134 @@ namespace first
                     avaPlot.Refresh();
                 }
             };
+        }
+
+        public void OpenOrSwitchToAlgoTab(string algoName)
+        {
+            if (string.IsNullOrWhiteSpace(algoName)) return;
+
+            TabItem targetTab = null;
+
+            if (_allDynamicTabs.TryGetValue(algoName, out var exactTab))
+            {
+                targetTab = exactTab;
+            }
+            else
+            {
+                var match = _allDynamicTabs.FirstOrDefault(kv =>
+                    string.Equals(kv.Key, algoName, StringComparison.OrdinalIgnoreCase) ||
+                    kv.Key.Contains(algoName, StringComparison.OrdinalIgnoreCase) ||
+                    algoName.Contains(kv.Key, StringComparison.OrdinalIgnoreCase) ||
+                    (kv.Value.Tag as string)?.Contains(algoName, StringComparison.OrdinalIgnoreCase) == true);
+                if (match.Value != null)
+                {
+                    targetTab = match.Value;
+                }
+            }
+
+            if (targetTab != null)
+            {
+                if (!TabsMain.Items.Contains(targetTab))
+                {
+                    TabsMain.Items.Add(targetTab);
+                    UpdateTabListMenuButton();
+                }
+
+                TabsMain.SelectedItem = targetTab;
+                targetTab.BringIntoView();
+                SetStatus($"Открыт график: {algoName}");
+                return;
+            }
+
+            if (_lastResults != null && _lastResults.Count > 0)
+            {
+                RebuildPlotsAndSummary();
+                if (_allDynamicTabs.TryGetValue(algoName, out var reloadedTab))
+                {
+                    if (!TabsMain.Items.Contains(reloadedTab))
+                    {
+                        TabsMain.Items.Add(reloadedTab);
+                        UpdateTabListMenuButton();
+                    }
+                    TabsMain.SelectedItem = reloadedTab;
+                    reloadedTab.BringIntoView();
+                    SetStatus($"Открыт график: {algoName}");
+                }
+            }
+        }
+
+        private void OnSummaryAlgoClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string algoName)
+            {
+                OpenOrSwitchToAlgoTab(algoName);
+            }
+            else if ((sender as Control)?.DataContext is AlgoSummaryRow row)
+            {
+                OpenOrSwitchToAlgoTab(row.AlgoName);
+            }
+        }
+
+        private void OnGridSummaryDoubleTapped(object sender, TappedEventArgs e)
+        {
+            var visual = e.Source as Visual;
+            if (visual == null) return;
+            if (visual.FindAncestorOfType<DataGridColumnHeader>() != null) return;
+            if (visual.FindAncestorOfType<ScrollBar>() != null) return;
+
+            var row = (visual.DataContext as AlgoSummaryRow) ?? (GridSummary.SelectedItem as AlgoSummaryRow);
+            if (row != null)
+            {
+                OpenOrSwitchToAlgoTab(row.AlgoName);
+            }
+        }
+
+        private void OnGridSummaryTapped(object sender, TappedEventArgs e)
+        {
+            var visual = e.Source as Visual;
+            if (visual == null) return;
+            if (visual.FindAncestorOfType<DataGridColumnHeader>() != null) return;
+            if (visual.FindAncestorOfType<ScrollBar>() != null) return;
+
+            var cell = visual.FindAncestorOfType<DataGridCell>();
+            var row = (visual.DataContext as AlgoSummaryRow) ?? (GridSummary.SelectedItem as AlgoSummaryRow);
+            if (row == null) return;
+
+            if (GridSummary.CurrentColumn != null &&
+                (GridSummary.CurrentColumn.DisplayIndex == 0 || GridSummary.CurrentColumn.Header?.ToString() == "Алгоритм"))
+            {
+                OpenOrSwitchToAlgoTab(row.AlgoName);
+            }
+        }
+
+        private void OnGridSummaryKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter || e.Key == Key.Space)
+            {
+                if (GridSummary.SelectedItem is AlgoSummaryRow row)
+                {
+                    e.Handled = true;
+                    OpenOrSwitchToAlgoTab(row.AlgoName);
+                }
+            }
+        }
+
+        private void OnContextMenuOpenPlotClick(object sender, RoutedEventArgs e)
+        {
+            if (GridSummary.SelectedItem is AlgoSummaryRow row)
+            {
+                OpenOrSwitchToAlgoTab(row.AlgoName);
+            }
+        }
+
+        private async void OnContextMenuCopyRowClick(object sender, RoutedEventArgs e)
+        {
+            if (GridSummary.SelectedItem is AlgoSummaryRow row && Clipboard != null)
+            {
+                string text = $"{row.AlgoName}\t{row.ClassName}\tMaxN={row.MaxN}\tШаг={row.Step}\tТочек={row.Points}\tМетрика={row.Metric}\tC={row.ConstantC}\tMSE={row.MSE}\tФакт={row.FactMaxN}\tБаза={row.BaseMaxN}\tΔ%={row.DiffPct}\tТеория={row.TheoryMaxN}";
+                await Clipboard.SetTextAsync(text);
+                SetStatus($"Строка «{row.AlgoName}» скопирована в буфер обмена");
+            }
         }
     }
 }
