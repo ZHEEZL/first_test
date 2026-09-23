@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net8.0-windows</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <Nullable>disable</Nullable>
-        <PlatformTarget>x64</PlatformTarget>
+        <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Avalonia" Version="11.2.5" />
@@ -11,6 +11,7 @@
         <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.5" />
         <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.5" />
         <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.2.5" />
+        <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.2.5" />
         <PackageReference Include="ScottPlot.Avalonia" Version="5.0.54" />
         <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
     </ItemGroup>
