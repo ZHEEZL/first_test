@@ -245,68 +245,127 @@ namespace first
     }
 
     /// <summary>
-    /// Сортировка по Z-кривой Мортона (Morton Z-order curve) для 2D-точек: O(n·log n)
+    /// Древовидная сортировка через бинарное дерево поиска (Binary Search Tree, BST):
+    /// • В среднем (на случайных данных): O(n·log n)
+    /// • В худшем случае (на отсортированных данных): O(n^2) из-за вырождения дерева в связный список («бамбук»).
     /// </summary>
-    public sealed class MortonZCurveSortAlg : SortBase
+    public class TreeSortAlg : SortBase
     {
-        private uint[] _mortonKeys = Array.Empty<uint>();
-        private double[] _values = Array.Empty<double>();
-
-        public MortonZCurveSortAlg() : base("Сортировка по Z-кривой Мортона", ComplexityClass.Onlogn)
+        protected struct BstNode
         {
+            public double Value;
+            public int Left;
+            public int Right;
+        }
+
+        protected readonly bool _worstCase;
+        protected BstNode[] _nodes = Array.Empty<BstNode>();
+        protected int[] _stack = Array.Empty<int>();
+
+        public TreeSortAlg(string name = "Древовидная сортировка (Tree sort через BST)", ComplexityClass cls = null, bool worstCase = false)
+            : base(name, cls ?? ComplexityClass.Onlogn)
+        {
+            _worstCase = worstCase;
         }
 
         public override void Prepare(int n, ExperimentContext ctx)
         {
             base.Prepare(n, ctx);
-            ctx.FillPrefix(n);
-            if (_mortonKeys.Length < n)
+
+            if (_worstCase)
             {
-                _mortonKeys = new uint[n];
-                _values = new double[n];
+                // Для демонстрации худшего случая входной массив предварительно сортируется
+                // вне замера времени (в фазе Prepare).
+                // При этом каждый последующий элемент больше предыдущего, дерево вырождается
+                // в линейный список глубины n, вызывая O(n^2) сравнений.
+                Array.Sort(ctx.Work, 0, n);
+            }
+
+            if (_nodes.Length < n)
+            {
+                _nodes = new BstNode[n];
+                _stack = new int[n];
             }
         }
 
         public override void Work(int n, ExperimentContext ctx)
         {
-            var work = ctx.Work;
-            var v = ctx.V;
-            int vLen = v.Length;
+            if (n <= 1) return;
 
-            // Вычисляем коды Мортона для n 2D-точек через побитовое чередование
-            for (int i = 0; i < n; i++)
+            var work = ctx.Work;
+            var nodes = _nodes;
+
+            // Корень дерева BST — первый элемент
+            nodes[0].Value = work[0];
+            nodes[0].Left = -1;
+            nodes[0].Right = -1;
+
+            // Вставка n-1 элементов в бинарное дерево поиска
+            for (int i = 1; i < n; i++)
             {
-                ushort x = (ushort)(work[i] * 65535.0);
-                ushort y = (ushort)(v[(i + 31) % vLen] * 65535.0);
-                _mortonKeys[i] = EncodeMorton2D(x, y);
-                _values[i] = work[i];
+                double val = work[i];
+                nodes[i].Value = val;
+                nodes[i].Left = -1;
+                nodes[i].Right = -1;
+
+                int curr = 0;
+                while (true)
+                {
+                    if (val < nodes[curr].Value)
+                    {
+                        int left = nodes[curr].Left;
+                        if (left == -1)
+                        {
+                            nodes[curr].Left = i;
+                            break;
+                        }
+                        curr = left;
+                    }
+                    else
+                    {
+                        int right = nodes[curr].Right;
+                        if (right == -1)
+                        {
+                            nodes[curr].Right = i;
+                            break;
+                        }
+                        curr = right;
+                    }
+                }
             }
 
-            // Сортировка точек по Z-индексу Мортона: O(n log n)
-            Array.Sort(_mortonKeys, _values, 0, n);
+            // Итеративный симметричный обход (In-order: Left -> Node -> Right).
+            // Извлекает элементы в отсортированном порядке без рекурсии и риска переполнения стека.
+            int top = -1;
+            int currNode = 0;
+            int outIdx = 0;
+            var stack = _stack;
 
-            Sink.Add(_mortonKeys[n >> 1] + _values[n >> 1]);
+            while (currNode != -1 || top >= 0)
+            {
+                while (currNode != -1)
+                {
+                    stack[++top] = currNode;
+                    currNode = nodes[currNode].Left;
+                }
+
+                currNode = stack[top--];
+                work[outIdx++] = nodes[currNode].Value;
+                currNode = nodes[currNode].Right;
+            }
+
+            Sink.Add(work[0] + work[n >> 1] + work[n - 1]);
         }
+    }
 
-        /// <summary>
-        /// Разрежение битов: вставляет нули между битами 16-битного числа
-        /// </summary>
-        public static uint Part1By1(uint x)
+    /// <summary>
+    /// Древовидная сортировка — худший случай (деградация BST на отсортированном входе): O(n^2).
+    /// </summary>
+    public sealed class TreeSortWorstCaseAlg : TreeSortAlg
+    {
+        public TreeSortWorstCaseAlg()
+            : base("Древовидная сортировка (худший случай BST)", ComplexityClass.On2, worstCase: true)
         {
-            x &= 0x0000ffff;
-            x = (x ^ (x << 8)) & 0x00ff00ff;
-            x = (x ^ (x << 4)) & 0x0f0f0f0f;
-            x = (x ^ (x << 2)) & 0x33333333;
-            x = (x ^ (x << 1)) & 0x55555555;
-            return x;
-        }
-
-        /// <summary>
-        /// Вычисление 32-битного кода Мортона для 2D-координат (x, y)
-        /// </summary>
-        public static uint EncodeMorton2D(ushort x, ushort y)
-        {
-            return (Part1By1(y) << 1) | Part1By1(x);
         }
     }
 
