@@ -1,38 +1,28 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using ScottPlot;
 
 namespace first
 {
     public static class Plotter
     {
-        public static List<KeyValuePair<string, ScottPlot.Plot>> Build(
+        public static List<KeyValuePair<string, Plot>> Build(
             List<Series> results,
             Dictionary<string, Series> baselineDict = null,
             bool showHistory = true,
             bool showErrorBars = true,
             bool darkTheme = true)
         {
-            var plots = new List<KeyValuePair<string, ScottPlot.Plot>>();
+            var plots = new List<KeyValuePair<string, Plot>>();
             foreach (var s in results)
             {
                 if (s.MatrixTimes != null || s.Algo is MatrixMultiply)
                 {
-                    var plt3d = new ScottPlot.Plot(1000, 620);
-                    if (darkTheme)
-                    {
-                        plt3d.Style(
-                            figureBackground: Color.FromArgb(31, 34, 41),
-                            dataBackground: Color.FromArgb(24, 26, 32),
-                            grid: Color.FromArgb(45, 50, 63),
-                            tick: Color.FromArgb(156, 163, 175),
-                            axisLabel: Color.FromArgb(226, 232, 240),
-                            titleLabel: Color.FromArgb(243, 244, 246)
-                        );
-                    }
+                    var plt3d = new Plot();
+                    ApplyDarkTheme(plt3d, darkTheme);
 
                     double[,] times = s.MatrixTimes;
                     int stepM = s.MatrixStepM > 0 ? s.MatrixStepM : 10;
@@ -65,22 +55,12 @@ namespace first
                             scaled[r, c] = times[r, c] * scale;
 
                     Matrix3DPlotter.RenderWireframe(plt3d, scaled, stepM, stepN, unit, 35, 25);
-                    plots.Add(new KeyValuePair<string, ScottPlot.Plot>(s.Algo.Name, plt3d));
+                    plots.Add(new KeyValuePair<string, Plot>(s.Algo.Name, plt3d));
                     continue;
                 }
 
-                var plt = new ScottPlot.Plot(1000, 620);
-                if (darkTheme)
-                {
-                    plt.Style(
-                        figureBackground: Color.FromArgb(31, 34, 41),
-                        dataBackground: Color.FromArgb(24, 26, 32),
-                        grid: Color.FromArgb(45, 50, 63),
-                        tick: Color.FromArgb(156, 163, 175),
-                        axisLabel: Color.FromArgb(226, 232, 240),
-                        titleLabel: Color.FromArgb(243, 244, 246)
-                    );
-                }
+                var plt = new Plot();
+                ApplyDarkTheme(plt, darkTheme);
 
                 string yLabel;
                 double[] ysFact;
@@ -88,6 +68,8 @@ namespace first
                 string fitLabel;
                 double unitScale = 1.0;
                 string unitName = "";
+
+                double[] xs = s.N.Select(n => (double)n).ToArray();
 
                 if (s.MeasuresSteps)
                 {
@@ -135,21 +117,24 @@ namespace first
                     double[] yErrors = s.StdDev.Select(sd => sd * unitScale).ToArray();
                     if (yErrors.Any(e => e > 1e-12))
                     {
-                        var err = plt.AddErrorBars(s.N.ToArray(), ysFact, null, null, yErrors, yErrors);
-                        err.Color = darkTheme ? Color.FromArgb(140, 96, 165, 250) : Color.FromArgb(120, 41, 128, 185);
-                        err.CapSize = 3;
+                        var err = plt.Add.ErrorBar(xs, ysFact, yErrors);
+                        err.Color = darkTheme ? Color.FromHex("#60A5FA").WithAlpha(0.6f) : Color.FromHex("#2980B9").WithAlpha(0.6f);
                     }
                 }
 
-                // 2. Текущий запуск
-                plt.AddScatter(s.N.ToArray(), ysFact,
-                    darkTheme ? Color.FromArgb(96, 165, 250) : Color.FromArgb(41, 128, 185), 2.0f, 5, ScottPlot.MarkerShape.filledCircle,
-                    label: "Текущий запуск");
+                // 2. Текущий запуск (Scatter)
+                var scFact = plt.Add.Scatter(xs, ysFact);
+                scFact.Color = darkTheme ? Color.FromHex("#60A5FA") : Color.FromHex("#2980B9");
+                scFact.LineWidth = 2.0f;
+                scFact.MarkerSize = 5;
+                scFact.LegendText = "Текущий запуск";
 
                 // 3. Теоретическая кривая
-                plt.AddScatter(s.N.ToArray(), ysFit,
-                    darkTheme ? Color.FromArgb(251, 146, 60) : Color.FromArgb(230, 126, 34), 2.0f, 0, ScottPlot.MarkerShape.none,
-                    label: fitLabel);
+                var scFit = plt.Add.Scatter(xs, ysFit);
+                scFit.Color = darkTheme ? Color.FromHex("#FB923C") : Color.FromHex("#E67E22");
+                scFit.LineWidth = 2.0f;
+                scFit.MarkerSize = 0;
+                scFit.LegendText = fitLabel;
 
                 // 4. Сравнение с историей (Базовый запуск / Ghost curve)
                 Series bSeries = null;
@@ -161,14 +146,17 @@ namespace first
 
                 if (hasBase)
                 {
+                    double[] bXs = bSeries.N.Select(n => (double)n).ToArray();
                     double[] ysBase = s.MeasuresSteps
                         ? bSeries.T.ToArray()
                         : bSeries.T.Select(t => t * unitScale).ToArray();
 
-                    var baseScatter = plt.AddScatter(bSeries.N.ToArray(), ysBase,
-                        darkTheme ? Color.FromArgb(192, 132, 252) : Color.FromArgb(142, 68, 173), 1.8f, 5, ScottPlot.MarkerShape.openCircle,
-                        label: "Базовый запуск (Эталон)");
-                    baseScatter.LineStyle = ScottPlot.LineStyle.Dash;
+                    var scBase = plt.Add.Scatter(bXs, ysBase);
+                    scBase.Color = darkTheme ? Color.FromHex("#C084FC") : Color.FromHex("#8E44AD");
+                    scBase.LineWidth = 1.8f;
+                    scBase.MarkerSize = 5;
+                    scBase.LinePattern = LinePattern.Dashed;
+                    scBase.LegendText = "Базовый запуск (Эталон)";
 
                     double curLast = s.T.Last();
                     double baseLast = bSeries.T.Last();
@@ -184,137 +172,72 @@ namespace first
                         if (Math.Abs(curLast - baseLast) < 1e-6)
                         {
                             badgeText = $"⚪ Шаги детерминированы (100% совпадение)\nТекущий: {curFmt}  |  Базовый: {baseFmt}";
-                            badgeBorder = Color.FromArgb(156, 163, 175);
+                            badgeBorder = Color.FromHex("#9CA3AF");
                         }
                         else
                         {
                             badgeText = $"⚪ Шаги: {curFmt} (базовый: {baseFmt})\nРазница: {diffPct:+0.0;-0.0;0.0}% (при n = {s.N.Last():0})";
-                            badgeBorder = Color.FromArgb(251, 146, 60);
+                            badgeBorder = Color.FromHex("#FB923C");
                         }
                     }
                     else if (diffPct <= -3.0)
                     {
                         badgeText = $"🟢 Быстрее на {Math.Abs(diffPct):F1}% (при n = {s.N.Last():0})\nТекущий: {curFmt}  |  Базовый: {baseFmt}";
-                        badgeBorder = Color.FromArgb(52, 211, 153);
+                        badgeBorder = Color.FromHex("#34D399");
                     }
                     else if (diffPct >= 3.0)
                     {
                         badgeText = $"🔴 Замедление на +{diffPct:F1}% (при n = {s.N.Last():0})\nТекущий: {curFmt}  |  Базовый: {baseFmt}";
-                        badgeBorder = Color.FromArgb(248, 113, 113);
+                        badgeBorder = Color.FromHex("#F87171");
                     }
                     else
                     {
                         badgeText = $"⚪ В пределах нормы: {diffPct:+0.0;-0.0;0.0}% (при n = {s.N.Last():0})\nТекущий: {curFmt}  |  Базовый: {baseFmt}";
-                        badgeBorder = Color.FromArgb(156, 163, 175);
+                        badgeBorder = Color.FromHex("#9CA3AF");
                     }
 
-                    var anno = plt.AddAnnotation(badgeText, ScottPlot.Alignment.UpperRight);
-                    anno.BackgroundColor = darkTheme ? Color.FromArgb(240, 38, 42, 53) : Color.FromArgb(238, 255, 255, 255);
-                    anno.BorderColor = badgeBorder;
-                    anno.Font.Color = darkTheme ? Color.FromArgb(243, 244, 246) : Color.FromArgb(33, 37, 41);
-                    anno.Font.Size = 10f;
-                    anno.Font.Bold = true;
-                    anno.Shadow = true;
+                    var anno = plt.Add.Annotation(badgeText, Alignment.UpperRight);
+                    anno.LabelBackgroundColor = darkTheme ? Color.FromHex("#262A35") : Color.FromHex("#FFFFFF");
+                    anno.LabelBorderColor = badgeBorder;
+                    anno.LabelFontColor = darkTheme ? Color.FromHex("#F3F4F6") : Color.FromHex("#212529");
+                    anno.LabelFontSize = 11;
+                    anno.LabelBold = true;
                 }
                 else
                 {
                     string annoText = $"Класс: {s.Algo.Cls.Name}\nMSE = {s.MSE:0.####E+00}";
-                    var anno = plt.AddAnnotation(annoText, ScottPlot.Alignment.UpperRight);
-                    anno.BackgroundColor = darkTheme ? Color.FromArgb(230, 38, 42, 53) : Color.FromArgb(230, 255, 255, 255);
-                    anno.BorderColor = darkTheme ? Color.FromArgb(75, 85, 99) : Color.FromArgb(189, 195, 199);
-                    anno.Font.Color = darkTheme ? Color.FromArgb(209, 213, 219) : Color.FromArgb(52, 73, 94);
-                    anno.Font.Size = 10f;
-                    anno.Shadow = true;
+                    var anno = plt.Add.Annotation(annoText, Alignment.UpperRight);
+                    anno.LabelBackgroundColor = darkTheme ? Color.FromHex("#262A35") : Color.FromHex("#FFFFFF");
+                    anno.LabelBorderColor = darkTheme ? Color.FromHex("#4B5563") : Color.FromHex("#BDC3C7");
+                    anno.LabelFontColor = darkTheme ? Color.FromHex("#D1D5DB") : Color.FromHex("#34495E");
+                    anno.LabelFontSize = 11;
                 }
 
-                var leg = plt.Legend(location: ScottPlot.Alignment.UpperLeft);
+                plt.ShowLegend(Alignment.UpperLeft);
                 if (darkTheme)
                 {
-                    leg.FillColor = Color.FromArgb(38, 42, 53);
-                    leg.OutlineColor = Color.FromArgb(75, 85, 99);
-                    leg.FontColor = Color.FromArgb(243, 244, 246);
+                    plt.Legend.BackgroundColor = Color.FromHex("#262A35");
+                    plt.Legend.OutlineColor = Color.FromHex("#4B5563");
+                    plt.Legend.FontColor = Color.FromHex("#F3F4F6");
                 }
 
-                plots.Add(new KeyValuePair<string, ScottPlot.Plot>(s.Algo.Name, plt));
-            }
-
-            // 5. Сводный сравнительный график алгоритмов возведения в степень (Часть IV практикума)
-            var powSeries = results.Where(s => s.Algo is PowBase && s.N.Count > 0).ToList();
-            if (powSeries.Count >= 2)
-            {
-                var pltPow = new ScottPlot.Plot(1000, 620);
-                if (darkTheme)
-                {
-                    pltPow.Style(
-                        figureBackground: Color.FromArgb(31, 34, 41),
-                        dataBackground: Color.FromArgb(24, 26, 32),
-                        grid: Color.FromArgb(45, 50, 63),
-                        tick: Color.FromArgb(156, 163, 175),
-                        axisLabel: Color.FromArgb(226, 232, 240),
-                        titleLabel: Color.FromArgb(243, 244, 246)
-                    );
-                }
-
-                pltPow.Title("Степени: Сравнение алгоритмов по числу шагов (операций)");
-                pltPow.XLabel("Показатель степени n");
-                pltPow.YLabel("Количество элементарных операций (умножений)");
-
-                Color[] powColors = new[]
-                {
-                    Color.FromArgb(239, 68, 68),   // Красный (Рис. 1, простой On)
-                    Color.FromArgb(59, 130, 246),  // Синий (Рис. 2, RecPow Ologn)
-                    Color.FromArgb(16, 185, 129),  // Зелёный (Рис. 3, QuickPow Ologn)
-                    Color.FromArgb(245, 158, 11),  // Янтарный (Рис. 4, QuickPow1 Ologn)
-                };
-
-                ScottPlot.MarkerShape[] powShapes = new[]
-                {
-                    ScottPlot.MarkerShape.filledCircle,
-                    ScottPlot.MarkerShape.filledSquare,
-                    ScottPlot.MarkerShape.filledDiamond,
-                    ScottPlot.MarkerShape.openCircle
-                };
-
-                for (int i = 0; i < powSeries.Count; i++)
-                {
-                    var ps = powSeries[i];
-                    var col = powColors[i % powColors.Length];
-                    var shape = powShapes[i % powShapes.Length];
-                    pltPow.AddScatter(
-                        ps.N.ToArray(),
-                        ps.T.ToArray(),
-                        col,
-                        lineWidth: 2.2f,
-                        markerSize: 5,
-                        markerShape: shape,
-                        label: $"{ps.Algo.Name} [{ps.Algo.Cls.Name}]"
-                    );
-                }
-
-                string badgeText = "Сравнение алгоритмов xⁿ:\n• Простой (Рис. 1): O(n) — крутой линейный рост\n• RecPow / QuickPow / QuickPow1: O(log n) — логарифмическая ступенька\nПри n = 2000: 2000 шагов против ~16-17 шагов!";
-                var anno = pltPow.AddAnnotation(badgeText, ScottPlot.Alignment.UpperRight);
-                anno.BackgroundColor = darkTheme ? Color.FromArgb(240, 38, 42, 53) : Color.FromArgb(238, 255, 255, 255);
-                anno.BorderColor = Color.FromArgb(59, 130, 246);
-                anno.Font.Color = darkTheme ? Color.FromArgb(243, 244, 246) : Color.FromArgb(33, 37, 41);
-                anno.Font.Size = 10f;
-                anno.Font.Bold = true;
-                anno.Shadow = true;
-
-                var leg = pltPow.Legend(location: ScottPlot.Alignment.UpperLeft);
-                if (darkTheme)
-                {
-                    leg.FillColor = Color.FromArgb(38, 42, 53);
-                    leg.OutlineColor = Color.FromArgb(75, 85, 99);
-                    leg.FontColor = Color.FromArgb(243, 244, 246);
-                }
-
-                plots.Add(new KeyValuePair<string, ScottPlot.Plot>("Степени (Сравнение всех 4)", pltPow));
+                plots.Add(new KeyValuePair<string, Plot>(s.Algo.Name, plt));
             }
 
             return plots;
         }
 
-        public static void SaveAll(IEnumerable<KeyValuePair<string, ScottPlot.Plot>> plots, string dir)
+        private static void ApplyDarkTheme(Plot plt, bool darkTheme)
+        {
+            if (!darkTheme) return;
+
+            plt.FigureBackground.Color = Color.FromHex("#1F2229");
+            plt.DataBackground.Color = Color.FromHex("#181A20");
+            plt.Axes.Color(Color.FromHex("#E2E8F0"));
+            plt.Grid.MajorLineColor = Color.FromHex("#2D323F");
+        }
+
+        public static void SaveAll(IEnumerable<KeyValuePair<string, Plot>> plots, string dir)
         {
             Directory.CreateDirectory(dir);
             int i = 0;
@@ -323,11 +246,7 @@ namespace first
                 i++;
                 string safe = string.Join("_", kv.Key.Split(Path.GetInvalidFileNameChars()));
                 string path = Path.Combine(dir, $"{i:00}_{safe}.png");
-
-                using (var bmp = kv.Value.Render(1000, 620))
-                {
-                    bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-                }
+                kv.Value.SavePng(path, 1000, 620);
             }
         }
     }

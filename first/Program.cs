@@ -6,7 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
+using Avalonia;
 
 namespace first
 {
@@ -57,14 +57,18 @@ namespace first
                 return;
             }
 
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
+
+        public static AppBuilder BuildAvaloniaApp()
+            => AppBuilder.Configure<App>()
+                .UsePlatformDetect()
+                .WithInterFont()
+                .LogToTrace();
 
         private static void RunConsoleMode()
         {
-            var configs = MainForm.CreateDefaultConfigs();
+            var configs = AlgoConfigItem.CreateDefaultConfigs();
             const int maxVectorN = 2000;
             var ctx = new ExperimentContext(maxVectorN, seed: 20240915);
             Bench.GlobalWarmup(ctx);
@@ -135,15 +139,13 @@ namespace first
                 }
             }
 
-            using (var bmp3d = Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", 1200, 750, yaw: 40, pitch: 28, distance: 2.4, mode: ViewportMode.ShadedWireframe))
-            {
-                bmp3d.Save(Path.Combine("charts", "14_Матричное_умножение_3D.png"), System.Drawing.Imaging.ImageFormat.Png);
-            }
+            var plt3d = new ScottPlot.Plot();
+            Matrix3DPlotter.RenderWireframe(plt3d, mTimes, mStep, mStep, "мс", 35, 25);
+            plt3d.SavePng(Path.Combine("charts", "14_Матричное_умножение_3D.png"), 1200, 750);
 
-            using (var bmpHm = Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", 1200, 750, mode: ViewportMode.Heatmap2D))
-            {
-                bmpHm.Save(Path.Combine("charts", "14_Матричное_умножение_Heatmap.png"), System.Drawing.Imaging.ImageFormat.Png);
-            }
+            var pltHm = new ScottPlot.Plot();
+            Matrix3DPlotter.RenderHeatmap(pltHm, mTimes, mStep, mStep, "мс");
+            pltHm.SavePng(Path.Combine("charts", "14_Матричное_умножение_Heatmap.png"), 1200, 750);
             Console.WriteLine("3D график T × M × N сохранен: charts/14_Матричное_умножение_3D.png");
             Console.WriteLine("Heatmap сохранен: charts/14_Матричное_умножение_Heatmap.png");
 

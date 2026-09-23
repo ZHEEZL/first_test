@@ -1,0 +1,167 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ScottPlot="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        xmlns:local="clr-namespace:first"
+        x:Class="first.MainWindow"
+        Title="Лабораторная работа №1 — Анализ вычислительной сложности алгоритмов (.NET 8 Avalonia UI)"
+        Width="1420" Height="880"
+        MinWidth="1050" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        Background="#181A20"
+        Foreground="#F3F4F6">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI, Inter, Arial, sans-serif" />
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+    </Window.Styles>
+
+    <Grid ColumnDefinitions="380, *">
+        <!-- Левая панель параметров -->
+        <Border Grid.Column="0" Background="#1F2229" BorderBrush="#2D323F" BorderThickness="0,0,1,0" Padding="14">
+            <Grid RowDefinitions="Auto, Auto, *, Auto, Auto, Auto">
+                <!-- Заголовок -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,10" Spacing="3">
+                    <TextBlock Text="⚙ ПАРАМЕТРЫ ЗАМЕРОВ" FontSize="15" FontWeight="Bold" Foreground="#60A5FA" />
+                    <TextBlock Text="Лабораторный практикум (15 алгоритмов)" FontSize="12" Foreground="#9CA3AF" />
+                </StackPanel>
+
+                <!-- Кнопки быстрого выбора -->
+                <Grid Grid.Row="1" ColumnDefinitions="*, *, *" Margin="0,0,0,8">
+                    <Button Name="BtnSelectAll" Grid.Column="0" Content="Выбрать все" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,3,0" Padding="4,4" FontSize="11" />
+                    <Button Name="BtnDeselectAll" Grid.Column="1" Content="Снять все" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="3,0,3,0" Padding="4,4" FontSize="11" />
+                    <Button Name="BtnResetLimits" Grid.Column="2" Content="Сброс N" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="3,0,0,0" Padding="4,4" FontSize="11" />
+                </Grid>
+
+                <!-- Таблица алгоритмов -->
+                <DataGrid Grid.Row="2" Name="GridConfigs"
+                          AutoGenerateColumns="False"
+                          CanUserResizeColumns="True"
+                          GridLinesVisibility="All"
+                          BorderBrush="#2D323F" BorderThickness="1"
+                          Background="#181A20"
+                          FontSize="12">
+                    <DataGrid.Columns>
+                        <DataGridCheckBoxColumn Header="✔" Binding="{Binding Enabled}" Width="38" />
+                        <DataGridTextColumn Header="Алгоритм" Binding="{Binding Name}" IsReadOnly="True" Width="*" />
+                        <DataGridTextColumn Header="Класс" Binding="{Binding ClassName}" IsReadOnly="True" Width="72" />
+                        <DataGridTextColumn Header="Max N" Binding="{Binding MaxN}" Width="58" />
+                        <DataGridTextColumn Header="Шаг" Binding="{Binding Step}" Width="45" />
+                        <DataGridTextColumn Header="Повт." Binding="{Binding Runs}" Width="45" />
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- Глобальные опции -->
+                <Border Grid.Row="3" Background="#181A20" BorderBrush="#2D323F" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,10,0,10">
+                    <StackPanel Spacing="6">
+                        <CheckBox Name="ChkCache" Content="Кэшировать замеры в SQLite (benchmark.db)" IsChecked="True" FontSize="12" />
+                        <CheckBox Name="ChkForce" Content="Принудительный перерасчёт (без кэша)" IsChecked="False" FontSize="12" />
+                        <CheckBox Name="ChkWarmup" Content="Локальный и глобальный прогрев" IsChecked="True" FontSize="12" />
+                        <Grid ColumnDefinitions="Auto, *" Margin="0,2,0,0">
+                            <TextBlock Grid.Column="0" Text="Seed генератора:" VerticalAlignment="Center" FontSize="12" Foreground="#9CA3AF" Margin="0,0,8,0" />
+                            <TextBox Name="TxtSeed" Grid.Column="1" Text="20240915" Height="26" FontSize="12" Padding="6,2" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Кнопки управления -->
+                <Grid Grid.Row="4" ColumnDefinitions="2*, 1*" Margin="0,0,0,10">
+                    <Button Name="BtnRun" Grid.Column="0" Content="▶ ЗАПУСТИТЬ ЗАМЕРЫ" Background="#2563EB" Foreground="White" Height="42" FontSize="13" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,6,0" />
+                    <Button Name="BtnCancel" Grid.Column="1" Content="■ Стоп" Background="#7F1D1D" Foreground="#FCA5A5" IsEnabled="False" Height="42" FontSize="13" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                </Grid>
+
+                <!-- Статус и прогресс -->
+                <StackPanel Grid.Row="5" Spacing="4">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Name="LblStatus" Grid.Column="0" Text="● Готов к работе" Foreground="#34D399" FontSize="12" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Name="LblTime" Grid.Column="1" Text="Общее время: —" Foreground="#9CA3AF" FontSize="12" />
+                    </Grid>
+                    <ProgressBar Name="ProgressBarMain" Height="6" CornerRadius="3" Foreground="#2563EB" Background="#2D323F" Minimum="0" Maximum="100" Value="0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Правая основная область -->
+        <Grid Grid.Column="1" RowDefinitions="Auto, *">
+            <!-- Верхний тулбар -->
+            <Border Grid.Row="0" Background="#1F2229" BorderBrush="#2D323F" BorderThickness="0,0,0,1" Padding="12,8">
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                        <Button Name="BtnExportCsv" Content="📊 CSV" Padding="8,4" FontSize="12" ToolTip.Tip="Экспорт сводки в CSV" />
+                        <Button Name="BtnExportPng" Content="🖼 PNG" Padding="8,4" FontSize="12" ToolTip.Tip="Сохранить графики в charts/" />
+                    </StackPanel>
+
+                    <!-- Панель сравнения с историей -->
+                    <StackPanel Grid.Column="2" Name="PnlHistoryCompare" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                        <TextBlock Text="База:" VerticalAlignment="Center" FontSize="12" Foreground="#9CA3AF" />
+                        <ComboBox Name="CmbBaselineRun" Width="200" Height="30" FontSize="12" />
+                        <CheckBox Name="ChkShowHistory" Content="История" IsChecked="True" FontSize="12" Margin="4,0" />
+                        <CheckBox Name="ChkShowErrorBars" Content="Погрешности (±σ)" IsChecked="True" FontSize="12" Margin="4,0" />
+                        <Button Name="BtnManageHistory" Content="⚙ База..." Padding="8,4" FontSize="12" Background="#374151" Foreground="#F3F4F6" ToolTip.Tip="Управление базой данных SQLite" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Основной TabControl -->
+            <TabControl Grid.Row="1" Name="TabsMain" Background="#181A20" Margin="0">
+                <!-- Вкладка Сводка -->
+                <TabItem Header="📋 Сводка" FontSize="13">
+                    <DataGrid Name="GridSummary"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserResizeColumns="True"
+                              GridLinesVisibility="All"
+                              BorderBrush="#2D323F" BorderThickness="1"
+                              Background="#181A20"
+                              Margin="8"
+                              FontSize="12">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Алгоритм" Binding="{Binding AlgoName}" Width="160" />
+                            <DataGridTextColumn Header="Класс" Binding="{Binding ClassName}" Width="80" />
+                            <DataGridTextColumn Header="Max N" Binding="{Binding MaxN}" Width="65" />
+                            <DataGridTextColumn Header="Шаг" Binding="{Binding Step}" Width="55" />
+                            <DataGridTextColumn Header="Точек" Binding="{Binding Points}" Width="55" />
+                            <DataGridTextColumn Header="Метрика" Binding="{Binding Metric}" Width="75" />
+                            <DataGridTextColumn Header="Константа C" Binding="{Binding ConstantC}" Width="105" />
+                            <DataGridTextColumn Header="MSE" Binding="{Binding MSE}" Width="100" />
+                            <DataGridTextColumn Header="Факт (Max N)" Binding="{Binding FactMaxN}" Width="110" />
+                            <DataGridTextColumn Header="Базовый" Binding="{Binding BaseMaxN}" Width="105" />
+                            <DataGridTextColumn Header="Динамика (Δ%)" Binding="{Binding DiffPct}" Width="115" />
+                            <DataGridTextColumn Header="Теория (Max N)" Binding="{Binding TheoryMaxN}" Width="110" />
+                            <DataGridTextColumn Header="Источник" Binding="{Binding Source}" Width="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </TabItem>
+
+                <!-- Вкладка Журнал -->
+                <TabItem Header="📝 Журнал" FontSize="13">
+                    <TextBox Name="TxtLog"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Consolas, Courier New, monospace"
+                             FontSize="12"
+                             Background="#121419"
+                             Foreground="#E2E8F0"
+                             BorderThickness="0"
+                             Margin="8" />
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,5 +1,5 @@
 using System;
-using System.Drawing;
+using ScottPlot;
 
 namespace first
 {
@@ -24,38 +24,24 @@ namespace first
             return (x2 * 1.8, y2 * 1.5);
         }
 
-        public static void RenderHeatmap(ScottPlot.Plot plt, double[,] times, int stepM, int stepN, string unitName = "мс")
+        public static void RenderHeatmap(Plot plt, double[,] times, int stepM, int stepN, string unitName = "мс")
         {
             plt.Clear();
             int rowsM = times.GetLength(0);
             int colsN = times.GetLength(1);
 
-            double xMin = stepM;
-            double xMax = rowsM * stepM;
-            double yMin = stepN;
-            double yMax = colsN * stepN;
-
-            var hm = plt.AddHeatmap(times, ScottPlot.Drawing.Colormap.Turbo, lockScales: false);
-            hm.FlipVertically = true;
-            hm.XMin = xMin;
-            hm.XMax = xMax;
-            hm.YMin = yMin;
-            hm.YMax = yMax;
-            var cb = plt.AddColorbar(hm, 0);
+            var hm = plt.Add.Heatmap(times);
+            hm.Colormap = new ScottPlot.Colormaps.Turbo();
+            var cb = plt.Add.ColorBar(hm);
             cb.Label = $"Время T ({unitName})";
 
             plt.Title("Тепловая карта (Heatmap): время T от M и N (T × M × N)");
             plt.XLabel("Размерность M (строки A / столбцы B)");
             plt.YLabel("Размерность N (столбцы A / строки B)");
-            plt.SetAxisLimits(xMin - stepM * 0.5, xMax + stepM * 0.5, yMin - stepN * 0.5, yMax + stepN * 0.5);
-            plt.XAxis.Ticks(true);
-            plt.YAxis.Ticks(true);
-            plt.XAxis.Grid(true);
-            plt.YAxis.Grid(true);
         }
 
         public static void RenderWireframe(
-            ScottPlot.Plot plt,
+            Plot plt,
             double[,] times,
             int stepM,
             int stepN,
@@ -82,165 +68,134 @@ namespace first
             int maxN = colsN * stepN;
 
             // 1. Координатная сетка пола (T = 0)
-            var floorColor = Color.FromArgb(220, 225, 230);
+            var floorColor = Color.FromHex("#DCE1E6");
             int gridTicks = 5;
             for (int i = 0; i <= gridTicks; i++)
             {
                 double u = (double)i / gridTicks;
                 var p1 = Project3D(u, 0, 0, yawDeg, pitchDeg);
                 var p2 = Project3D(u, 1, 0, yawDeg, pitchDeg);
-                plt.AddScatterLines(new[] { p1.x, p2.x }, new[] { p1.y, p2.y }, floorColor, 1.0f);
+                AddLine(plt, p1, p2, floorColor, 1.0f);
             }
             for (int j = 0; j <= gridTicks; j++)
             {
                 double v = (double)j / gridTicks;
                 var p1 = Project3D(0, v, 0, yawDeg, pitchDeg);
                 var p2 = Project3D(1, v, 0, yawDeg, pitchDeg);
-                plt.AddScatterLines(new[] { p1.x, p2.x }, new[] { p1.y, p2.y }, floorColor, 1.0f);
+                AddLine(plt, p1, p2, floorColor, 1.0f);
             }
 
-            // 2. Ограничивающий 3D параллелепипед (задние грани и потолок)
-            var boxColor = Color.FromArgb(235, 238, 242);
+            // 2. Ограничивающий 3D параллелепипед
+            var boxColor = Color.FromHex("#EBEFF2");
             var b001 = Project3D(0, 0, 1, yawDeg, pitchDeg);
             var b101 = Project3D(1, 0, 1, yawDeg, pitchDeg);
             var b111 = Project3D(1, 1, 1, yawDeg, pitchDeg);
             var b011 = Project3D(0, 1, 1, yawDeg, pitchDeg);
-            plt.AddScatterLines(new[] { b001.x, b101.x, b111.x, b011.x, b001.x },
-                                new[] { b001.y, b101.y, b111.y, b011.y, b001.y }, boxColor, 1.0f);
+
+            AddLine(plt, b001, b101, boxColor, 1.0f);
+            AddLine(plt, b101, b111, boxColor, 1.0f);
+            AddLine(plt, b111, b011, boxColor, 1.0f);
+            AddLine(plt, b011, b001, boxColor, 1.0f);
 
             var b100 = Project3D(1, 0, 0, yawDeg, pitchDeg);
             var b010 = Project3D(0, 1, 0, yawDeg, pitchDeg);
             var b110 = Project3D(1, 1, 0, yawDeg, pitchDeg);
-            plt.AddScatterLines(new[] { b100.x, b101.x }, new[] { b100.y, b101.y }, boxColor, 1.0f);
-            plt.AddScatterLines(new[] { b010.x, b011.x }, new[] { b010.y, b011.y }, boxColor, 1.0f);
-            plt.AddScatterLines(new[] { b110.x, b111.x }, new[] { b110.y, b111.y }, boxColor, 1.0f);
 
-            // 3. Основные 3D координатные оси (M, N, T)
+            AddLine(plt, b100, b101, boxColor, 1.0f);
+            AddLine(plt, b010, b011, boxColor, 1.0f);
+            AddLine(plt, b110, b111, boxColor, 1.0f);
+
+            // 3. Координатные оси M, N, T
             var pOrigin = Project3D(0, 0, 0, yawDeg, pitchDeg);
+            var pM = Project3D(1.15, 0, 0, yawDeg, pitchDeg);
+            var pN = Project3D(0, 1.15, 0, yawDeg, pitchDeg);
+            var pT = Project3D(0, 0, 1.15, yawDeg, pitchDeg);
 
-            // Ось M
-            var pMEnd = Project3D(1.08, 0, 0, yawDeg, pitchDeg);
-            plt.AddScatterLines(new[] { pOrigin.x, pMEnd.x }, new[] { pOrigin.y, pMEnd.y }, Color.FromArgb(39, 174, 96), 2.2f);
-            var pMArr = Project3D(1.14, 0, 0, yawDeg, pitchDeg);
-            plt.AddArrow(pMArr.x, pMArr.y, pMEnd.x, pMEnd.y, 2, Color.FromArgb(39, 174, 96));
-            var pMLbl = Project3D(1.14, 0, 0, yawDeg, pitchDeg);
-            plt.AddText($"Ось M (до {maxM})", pMLbl.x - 0.06, pMLbl.y - 0.06, 10, Color.FromArgb(39, 174, 96));
+            AddLine(plt, pOrigin, pM, Color.FromHex("#E74C3C"), 2.5f);
+            AddLine(plt, pOrigin, pN, Color.FromHex("#2ECC71"), 2.5f);
+            AddLine(plt, pOrigin, pT, Color.FromHex("#3498DB"), 2.5f);
 
-            // Засечки по оси M
-            for (int i = 1; i <= gridTicks; i++)
-            {
-                double u = (double)i / gridTicks;
-                int valM = (int)Math.Round(u * maxM);
-                var pt = Project3D(u, 0, 0, yawDeg, pitchDeg);
-                var ptOut = Project3D(u, -0.04, 0, yawDeg, pitchDeg);
-                plt.AddScatterLines(new[] { pt.x, ptOut.x }, new[] { pt.y, ptOut.y }, Color.FromArgb(120, Color.Gray), 1.0f);
-                plt.AddText($"{valM}", ptOut.x, ptOut.y - 0.03, 8, Color.FromArgb(100, 100, 100));
-            }
+            plt.Add.Text($"Ось M (строки, 0..{maxM})", pM.x, pM.y);
+            plt.Add.Text($"Ось N (столбцы, 0..{maxN})", pN.x, pN.y);
+            plt.Add.Text($"Ось T ({unitName}, 0..{maxT:0.0})", pT.x, pT.y);
 
-            // Ось N
-            var pNEnd = Project3D(0, 1.08, 0, yawDeg, pitchDeg);
-            plt.AddScatterLines(new[] { pOrigin.x, pNEnd.x }, new[] { pOrigin.y, pNEnd.y }, Color.FromArgb(41, 128, 185), 2.2f);
-            var pNArr = Project3D(0, 1.14, 0, yawDeg, pitchDeg);
-            plt.AddArrow(pNArr.x, pNArr.y, pNEnd.x, pNEnd.y, 2, Color.FromArgb(41, 128, 185));
-            var pNLbl = Project3D(0, 1.15, 0, yawDeg, pitchDeg);
-            plt.AddText($"Ось N (до {maxN})", pNLbl.x - 0.16, pNLbl.y + 0.04, 10, Color.FromArgb(41, 128, 185));
-
-            // Засечки по оси N
-            for (int j = 1; j <= gridTicks; j++)
-            {
-                double v = (double)j / gridTicks;
-                int valN = (int)Math.Round(v * maxN);
-                var pt = Project3D(0, v, 0, yawDeg, pitchDeg);
-                var ptOut = Project3D(-0.04, v, 0, yawDeg, pitchDeg);
-                plt.AddScatterLines(new[] { pt.x, ptOut.x }, new[] { pt.y, ptOut.y }, Color.FromArgb(120, Color.Gray), 1.0f);
-                plt.AddText($"{valN}", ptOut.x - 0.04, ptOut.y - 0.02, 8, Color.FromArgb(100, 100, 100));
-            }
-
-            // Ось T
-            var pTEnd = Project3D(0, 0, 1.08, yawDeg, pitchDeg);
-            plt.AddScatterLines(new[] { pOrigin.x, pTEnd.x }, new[] { pOrigin.y, pTEnd.y }, Color.FromArgb(192, 57, 43), 2.5f);
-            var pTArr = Project3D(0, 0, 1.15, yawDeg, pitchDeg);
-            plt.AddArrow(pTArr.x, pTArr.y, pTEnd.x, pTEnd.y, 2, Color.FromArgb(192, 57, 43));
-            var pTLbl = Project3D(0, 0, 1.20, yawDeg, pitchDeg);
-            plt.AddText($"Ось T ({unitName})", pTLbl.x - 0.08, pTLbl.y + 0.03, 11, Color.FromArgb(192, 57, 43));
-
-            // Засечки по оси T
-            for (int k = 1; k <= 4; k++)
-            {
-                double w = (double)k / 4.0;
-                double valT = minT + w * rangeT;
-                var pt = Project3D(0, 0, w, yawDeg, pitchDeg);
-                var ptOut = Project3D(-0.04, 0, w, yawDeg, pitchDeg);
-                plt.AddScatterLines(new[] { pt.x, ptOut.x }, new[] { pt.y, ptOut.y }, Color.FromArgb(192, 57, 43), 1.2f);
-                plt.AddText($"{valT:F2}", ptOut.x - 0.08, ptOut.y, 8, Color.FromArgb(192, 57, 43));
-            }
-
-            // 4. Поверхность 3D: сетка линий по строкам M и столбцам N
+            // 4. Каркас поверхности сложности T(M, N)
+            var projX = new double[rowsM, colsN];
+            var projY = new double[rowsM, colsN];
             for (int r = 0; r < rowsM; r++)
             {
-                double u = rowsM > 1 ? (double)r / (rowsM - 1) : 0;
-                var xs = new double[colsN];
-                var ys = new double[colsN];
+                double u = (double)(r + 1) / rowsM;
                 for (int c = 0; c < colsN; c++)
                 {
-                    double v = colsN > 1 ? (double)c / (colsN - 1) : 0;
+                    double v = (double)(c + 1) / colsN;
                     double w = (times[r, c] - minT) / rangeT;
-                    var p = Project3D(u, v, w, yawDeg, pitchDeg);
-                    xs[c] = p.x;
-                    ys[c] = p.y;
+                    var pt = Project3D(u, v, w, yawDeg, pitchDeg);
+                    projX[r, c] = pt.x;
+                    projY[r, c] = pt.y;
                 }
-
-                float fraction = (float)((times[r, colsN - 1] - minT) / rangeT);
-                var color = InterpolateColor(Color.FromArgb(41, 128, 185), Color.FromArgb(231, 76, 60), fraction);
-                plt.AddScatterLines(xs, ys, color, 1.8f);
-                plt.AddScatterPoints(xs, ys, color, 4.0f);
             }
 
+            // Рёбра вдоль M
             for (int c = 0; c < colsN; c++)
             {
-                double v = colsN > 1 ? (double)c / (colsN - 1) : 0;
-                var xs = new double[rowsM];
-                var ys = new double[rowsM];
+                double[] xs = new double[rowsM];
+                double[] ys = new double[rowsM];
                 for (int r = 0; r < rowsM; r++)
                 {
-                    double u = rowsM > 1 ? (double)r / (rowsM - 1) : 0;
-                    double w = (times[r, c] - minT) / rangeT;
-                    var p = Project3D(u, v, w, yawDeg, pitchDeg);
-                    xs[r] = p.x;
-                    ys[r] = p.y;
+                    xs[r] = projX[r, c];
+                    ys[r] = projY[r, c];
                 }
-                plt.AddScatterLines(xs, ys, Color.FromArgb(90, Color.SteelBlue), 1.0f);
+                var sc = plt.Add.Scatter(xs, ys);
+                sc.MarkerSize = 0;
+                sc.LineWidth = 1.6f;
+                sc.Color = Color.FromHex("#2980B9");
             }
 
-            // Линии сброса (Drop-lines) от дальнего угла поверхности к полу
-            if (rowsM > 0 && colsN > 0)
+            // Рёбра вдоль N
+            for (int r = 0; r < rowsM; r++)
             {
-                double wMax = (times[rowsM - 1, colsN - 1] - minT) / rangeT;
-                var pSurfCorner = Project3D(1, 1, wMax, yawDeg, pitchDeg);
-                var pFloorCorner = Project3D(1, 1, 0, yawDeg, pitchDeg);
-                plt.AddScatterLines(new[] { pSurfCorner.x, pFloorCorner.x },
-                                    new[] { pSurfCorner.y, pFloorCorner.y },
-                                    Color.FromArgb(140, Color.IndianRed), 1.2f);
+                double[] xs = new double[colsN];
+                double[] ys = new double[colsN];
+                for (int c = 0; c < colsN; c++)
+                {
+                    xs[c] = projX[r, c];
+                    ys[c] = projY[r, c];
+                }
+                var sc = plt.Add.Scatter(xs, ys);
+                sc.MarkerSize = 0;
+                sc.LineWidth = 1.6f;
+                sc.Color = Color.FromHex("#27AE60");
             }
 
-            // Заголовок и аннотация
-            plt.Title("3D График сложности матричного умножения: T × M × N");
-            plt.AddAnnotation($"A(M×N) × B(N×M) → C(M×M) | O(M²·N)\nMax M={maxM}, Max N={maxN}\nMax T={maxT:F2} {unitName}", ScottPlot.Alignment.UpperLeft);
+            // Узловые точки
+            int totalPts = rowsM * colsN;
+            double[] allXs = new double[totalPts];
+            double[] allYs = new double[totalPts];
+            int idx = 0;
+            for (int r = 0; r < rowsM; r++)
+                for (int c = 0; c < colsN; c++)
+                {
+                    allXs[idx] = projX[r, c];
+                    allYs[idx] = projY[r, c];
+                    idx++;
+                }
 
-            plt.SetAxisLimits(-1.75, 1.85, -1.35, 1.35);
-            plt.XAxis.Ticks(false);
-            plt.YAxis.Ticks(false);
-            plt.XAxis.Grid(false);
-            plt.YAxis.Grid(false);
+            var scPts = plt.Add.Scatter(allXs, allYs);
+            scPts.MarkerSize = 5;
+            scPts.LineWidth = 0;
+            scPts.Color = Color.FromHex("#8E44AD");
+
+            plt.Title($"3D Пространственная сложность матричного умножения T(M,N) ~ O(M²·N)\nMax M={maxM}, Max N={maxN}, T_max={maxT:0.0} {unitName}");
+            plt.Axes.Frameless();
+            plt.HideGrid();
         }
 
-        private static Color InterpolateColor(Color c1, Color c2, float fraction)
+        private static void AddLine(Plot plt, (double x, double y) p1, (double x, double y) p2, Color color, float width)
         {
-            fraction = Math.Max(0, Math.Min(1, fraction));
-            int r = (int)(c1.R + (c2.R - c1.R) * fraction);
-            int g = (int)(c1.G + (c2.G - c1.G) * fraction);
-            int b = (int)(c1.B + (c2.B - c1.B) * fraction);
-            return Color.FromArgb(r, g, b);
+            var sc = plt.Add.Scatter(new[] { p1.x, p2.x }, new[] { p1.y, p2.y });
+            sc.MarkerSize = 0;
+            sc.LineWidth = width;
+            sc.Color = color;
         }
     }
 }

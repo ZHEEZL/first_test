@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="first.HistoryManagerWindow"
+        Title="База данных замеров — Управление историей (SQLite)"
+        Width="980" Height="600"
+        MinWidth="780" MinHeight="450"
+        WindowStartupLocation="CenterOwner"
+        Background="#181A20"
+        Foreground="#F3F4F6">
+    <Grid RowDefinitions="Auto, *, Auto" Margin="16">
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,12" Spacing="4">
+            <TextBlock Text="⚙ Управление историей экспериментов (benchmark.db)" FontSize="16" FontWeight="SemiBold" Foreground="#60A5FA" />
+            <TextBlock Text="Выберите запуск для назначения эталона, редактирования заметок или очистки устаревших данных." FontSize="12" Foreground="#9CA3AF" />
+        </StackPanel>
+
+        <!-- Experiments DataGrid -->
+        <DataGrid Grid.Row="1" Name="GridHistory"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  GridLinesVisibility="All"
+                  BorderBrush="#2D323F" BorderThickness="1"
+                  Background="#1F2229">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding ShortId}" Width="90" />
+                <DataGridTextColumn Header="Дата и время" Binding="{Binding CreatedAtFormatted}" Width="140" />
+                <DataGridTextColumn Header="Замеров" Binding="{Binding TotalMeasurements}" Width="75" />
+                <DataGridTextColumn Header="Эталон" Binding="{Binding BaselineDisplay}" Width="80" />
+                <DataGridTextColumn Header="Заметка" Binding="{Binding Note}" Width="180" />
+                <DataGridTextColumn Header="Алгоритмы" Binding="{Binding AlgorithmsDisplay}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Bottom Actions -->
+        <Grid Grid.Row="2" ColumnDefinitions="Auto, *, Auto" Margin="0,14,0,0">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                <TextBox Name="TxtNote" Width="240" Watermark="Заметка к запуску..." VerticalAlignment="Center" />
+                <Button Name="BtnSaveNote" Content="💾 Сохранить" />
+                <Button Name="BtnSetBaseline" Content="⭐ Сделать эталоном" Background="#2563EB" Foreground="White" />
+                <Button Name="BtnDelete" Content="🗑️ Удалить" Background="#7F1D1D" Foreground="#FCA5A5" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button Name="BtnClearAll" Content="⚠️ Очистить всё" Background="#374151" Foreground="#EF4444" />
+                <Button Name="BtnClose" Content="Закрыть" Width="90" HorizontalContentAlignment="Center" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
