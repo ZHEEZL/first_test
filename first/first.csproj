@@ -4,6 +4,9 @@
         <TargetFramework>net8.0</TargetFramework>
         <Nullable>disable</Nullable>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+        <TieredCompilation>false</TieredCompilation>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Avalonia" Version="11.2.5" />

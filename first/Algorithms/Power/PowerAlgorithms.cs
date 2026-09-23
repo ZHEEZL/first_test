@@ -23,7 +23,7 @@ namespace first
         protected abstract double Pow(double x, int n, ref long steps);
     }
 
-    // ---------- Возведение в степень (4 алгоритма из методички) ----------
+    // ---------- Возведение в степень (алгоритмы из методички и спецификации) ----------
 
     /// <summary>
     /// Рис. 1: простой алгоритм: f = x·x·...·x (n умножений) -> O(n)
@@ -51,7 +51,28 @@ namespace first
     }
 
     /// <summary>
-    /// Рис. 2: рекурсивный RecPow по формуле (3) -> O(log n)
+    /// П. 11: линейная рекурсия по определению x^n = x · x^(n-1), x^0 = 1 -> O(n) шагов
+    /// </summary>
+    public sealed class PowRecursiveLinear : PowBase
+    {
+        public PowRecursiveLinear() : this(1.0000001)
+        {
+        }
+
+        public PowRecursiveLinear(double x) : base("Степень (рекурсивный x·xⁿ⁻¹, п. 11)", ComplexityClass.On, x)
+        {
+        }
+
+        protected override double Pow(double x, int n, ref long steps)
+        {
+            if (n <= 0) return 1.0;
+            steps++;
+            return x * Pow(x, n - 1, ref steps);
+        }
+    }
+
+    /// <summary>
+    /// Рис. 2: рекурсивный бинарный RecPow с делением n div 2 -> O(log n)
     /// </summary>
     public sealed class PowRecursive : PowBase
     {

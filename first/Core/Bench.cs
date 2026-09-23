@@ -62,6 +62,11 @@ namespace first
                         ct.ThrowIfCancellationRequested();
                         int n = (c + 1) * stepN;
 
+                        // Локальный прогрев матричного буфера под размер (m, n)
+                        mm.PrepareMN(m, n);
+                        mm.MultiplyMN(m, n);
+                        CleanHeap();
+
                         double sumSec = 0;
                         for (int run = 0; run < runsCount; run++)
                         {
@@ -114,6 +119,13 @@ namespace first
 
             if (!algo.MeasuresSteps)
             {
+                try
+                {
+                    Thread.CurrentThread.Priority = ThreadPriority.Highest;
+                }
+                catch
+                {
+                }
                 Warmup(algo, ctx, p.MaxN); // прогрев JIT на максимальном n
             }
 
@@ -154,6 +166,14 @@ namespace first
                     int batch = (algo.MeasuresSteps || !p.AutoBatch) ? p.Batch : CalibrateBatch(algo, ctx, n, p.MinMeasureSec);
                     var elapsedSecs = new double[runsCount];
                     var stepCounts = new long[runsCount];
+
+                    // Локальный холостой прогрев L1/L2 кэша и структур данных для среза размера n
+                    if (!algo.MeasuresSteps)
+                    {
+                        algo.Prepare(n, ctx);
+                        algo.Work(n, ctx);
+                        CleanHeap();
+                    }
 
                     for (int r = 0; r < runsCount; r++)
                     {
@@ -245,9 +265,19 @@ namespace first
 
         public static void GlobalWarmup(ExperimentContext ctx, Action<string> log = null)
         {
-            string msgStart = ">>> Глобальный прогрев (JIT, GC, память, Turbo Boost CPU)...";
+            string msgStart = ">>> Глобальный прогрев (JIT, память, сброс C-states CPU, фиксация Affinity и Priority)...";
             Console.WriteLine(msgStart);
             log?.Invoke(msgStart);
+
+            try
+            {
+                Process.GetCurrentProcess().ProcessorAffinity = (IntPtr)1;
+                Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+                Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            }
+            catch
+            {
+            }
 
             var dummy = new double[15];
             for (int i = 0; i < dummy.Length; i++) dummy[i] = 1.0;
@@ -261,7 +291,7 @@ namespace first
             for (int i = 0; i < Math.Min(2000, ctx.V.Length); i++) sum += ctx.V[i];
             Sink.Add(sum);
 
-            long targetTicks = Stopwatch.Frequency / 10; // ~100 мс спиннинга
+            long targetTicks = Stopwatch.Frequency / 10; // ~100 мс спиннинга для вывода ядра в активное C0-состояние
             long start = Stopwatch.GetTimestamp();
             double val = 1.0;
             while (Stopwatch.GetTimestamp() - start < targetTicks)

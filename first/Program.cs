@@ -18,6 +18,7 @@ namespace first
             Console.OutputEncoding = Encoding.UTF8;
             try
             {
+                Process.GetCurrentProcess().ProcessorAffinity = (IntPtr)1;
                 Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
             }
             catch
@@ -53,7 +54,8 @@ namespace first
 
             if (args.Length > 0 && args[0] == "--no-window")
             {
-                RunConsoleMode();
+                bool force = args.Contains("--force");
+                RunConsoleMode(force);
                 return;
             }
 
@@ -66,7 +68,7 @@ namespace first
                 .WithInterFont()
                 .LogToTrace();
 
-        private static void RunConsoleMode()
+        private static void RunConsoleMode(bool forceRecalc = false)
         {
             var configs = AlgoConfigItem.CreateDefaultConfigs();
             const int maxVectorN = 2000;
@@ -85,7 +87,7 @@ namespace first
                 a.P.StartN = cfg.DefaultStep;
                 a.P.Runs = cfg.DefaultRuns;
                 Console.WriteLine($"\n=== {a} ===");
-                results.Add(Bench.Run(a, ctx, expId, useCache: true, forceRecalc: false));
+                results.Add(Bench.Run(a, ctx, expId, useCache: !forceRecalc, forceRecalc: forceRecalc));
             }
 
             swAll.Stop();
@@ -139,10 +141,10 @@ namespace first
                 }
             }
 
-            Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", Path.Combine("charts", "14_Матричное_умножение_3D.png"), 1200, 750, ViewportMode.ShadedWireframe);
-            Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", Path.Combine("charts", "14_Матричное_умножение_Heatmap.png"), 1200, 750, ViewportMode.Heatmap2D);
-            Console.WriteLine("3D график T × M × N сохранен: charts/14_Матричное_умножение_3D.png");
-            Console.WriteLine("Heatmap сохранен: charts/14_Матричное_умножение_Heatmap.png");
+            Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", Path.Combine("charts", "17_Матричное_умножение_3D.png"), 1200, 750, ViewportMode.ShadedWireframe);
+            Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", Path.Combine("charts", "17_Матричное_умножение_Heatmap.png"), 1200, 750, ViewportMode.Heatmap2D);
+            Console.WriteLine("3D график T × M × N сохранен: charts/17_Матричное_умножение_3D.png");
+            Console.WriteLine("Heatmap сохранен: charts/17_Матричное_умножение_Heatmap.png");
 
             Console.WriteLine("\nCSV: results.csv;  PNG: charts/;  SQLite: benchmark.db");
         }
