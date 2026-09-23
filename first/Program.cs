@@ -139,13 +139,8 @@ namespace first
                 }
             }
 
-            var plt3d = new ScottPlot.Plot();
-            Matrix3DPlotter.RenderWireframe(plt3d, mTimes, mStep, mStep, "мс", 35, 25);
-            plt3d.SavePng(Path.Combine("charts", "14_Матричное_умножение_3D.png"), 1200, 750);
-
-            var pltHm = new ScottPlot.Plot();
-            Matrix3DPlotter.RenderHeatmap(pltHm, mTimes, mStep, mStep, "мс");
-            pltHm.SavePng(Path.Combine("charts", "14_Матричное_умножение_Heatmap.png"), 1200, 750);
+            Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", Path.Combine("charts", "14_Матричное_умножение_3D.png"), 1200, 750, ViewportMode.ShadedWireframe);
+            Matrix3DViewport.RenderOffline(mTimes, mStep, mStep, "мс", Path.Combine("charts", "14_Матричное_умножение_Heatmap.png"), 1200, 750, ViewportMode.Heatmap2D);
             Console.WriteLine("3D график T × M × N сохранен: charts/14_Матричное_умножение_3D.png");
             Console.WriteLine("Heatmap сохранен: charts/14_Матричное_умножение_Heatmap.png");
 

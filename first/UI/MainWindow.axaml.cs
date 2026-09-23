@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
@@ -561,14 +562,64 @@ namespace first
             // Создаем динамические вкладки графиков
             foreach (var kv in _lastPlots)
             {
+                if (kv.Key.Contains("Матричное"))
+                {
+                    var mSeries = _lastResults.FirstOrDefault(s => s.MatrixTimes != null || s.Algo is MatrixMultiply);
+                    if (mSeries != null && mSeries.MatrixTimes != null)
+                    {
+                        var panel3d = new Grid { RowDefinitions = new RowDefinitions("Auto, *") };
+                        var toolBar3d = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6, Margin = new Thickness(8, 6) };
+
+                        var vp3d = new Matrix3DViewport();
+                        vp3d.SetData(mSeries.MatrixTimes, mSeries.MatrixStepM, mSeries.MatrixStepN, "мс");
+
+                        var btnShaded = new Button { Content = "Полигоны (Shaded)", FontSize = 11, Padding = new Thickness(8, 4) };
+                        btnShaded.Click += (s, e) => { vp3d.Mode = ViewportMode.ShadedWireframe; vp3d.InvalidateVisual(); };
+
+                        var btnWire = new Button { Content = "Каркас (Wireframe)", FontSize = 11, Padding = new Thickness(8, 4) };
+                        btnWire.Click += (s, e) => { vp3d.Mode = ViewportMode.WireframeOnly; vp3d.InvalidateVisual(); };
+
+                        var btnPoints = new Button { Content = "Точки (PointCloud)", FontSize = 11, Padding = new Thickness(8, 4) };
+                        btnPoints.Click += (s, e) => { vp3d.Mode = ViewportMode.PointCloud; vp3d.InvalidateVisual(); };
+
+                        var btnHeatmap = new Button { Content = "2D Heatmap", FontSize = 11, Padding = new Thickness(8, 4) };
+                        btnHeatmap.Click += (s, e) => { vp3d.Mode = ViewportMode.Heatmap2D; vp3d.InvalidateVisual(); };
+
+                        var btnResetCam = new Button { Content = "↺ Сброс камеры", FontSize = 11, Padding = new Thickness(8, 4) };
+                        btnResetCam.Click += (s, e) => vp3d.ResetCamera();
+
+                        toolBar3d.Children.Add(btnShaded);
+                        toolBar3d.Children.Add(btnWire);
+                        toolBar3d.Children.Add(btnPoints);
+                        toolBar3d.Children.Add(btnHeatmap);
+                        toolBar3d.Children.Add(btnResetCam);
+
+                        Grid.SetRow(toolBar3d, 0);
+                        Grid.SetRow(vp3d, 1);
+                        panel3d.Children.Add(toolBar3d);
+                        panel3d.Children.Add(vp3d);
+
+                        var tabItem3D = new TabItem
+                        {
+                            Header = "🧊 Матрица 3D",
+                            Tag = kv.Key,
+                            Content = panel3d,
+                            FontSize = 13
+                        };
+
+                        _dynamicTabs.Add(tabItem3D);
+                        TabsMain.Items.Add(tabItem3D);
+                        continue;
+                    }
+                }
+
                 var avaPlot = new AvaPlot();
                 avaPlot.Reset(kv.Value);
                 avaPlot.Refresh();
 
-                string tabHeader = kv.Key.Contains("Матричное") ? "🧊 Матрица 3D" : $"📈 {kv.Key}";
                 var tabItem = new TabItem
                 {
-                    Header = tabHeader,
+                    Header = $"📈 {kv.Key}",
                     Tag = kv.Key,
                     Content = avaPlot,
                     FontSize = 13
